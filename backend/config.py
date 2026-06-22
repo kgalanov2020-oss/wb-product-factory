@@ -27,12 +27,12 @@ class Settings(BaseSettings):
 
     mpstats_base_url: HttpUrl = HttpUrl("https://mpstats.io")
     mpstats_login_url: HttpUrl = HttpUrl("https://mpstats.io/login")
+    mpstats_search_url: HttpUrl = HttpUrl("https://mpstats.io/wb/search")
     mpstats_headless: bool = True
     mpstats_timeout_ms: PositiveInt = 30_000
     mpstats_storage_state_path: Path = Path("data/mpstats-state.json")
     mpstats_email: str | None = None
     mpstats_password: SecretStr | None = None
-    mpstats_search_selector: str | None = None
 
     @property
     def supabase_configured(self) -> bool:

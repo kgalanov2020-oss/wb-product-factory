@@ -48,12 +48,16 @@ class PlaywrightMPStatsCollector:
                     await context.storage_state(path=str(storage_path))
 
                 page.on("response", capture_json)
-                search_selector = self._settings.mpstats_search_selector
-                if not search_selector:
-                    raise MPStatsConfigurationError("MPSTATS_SEARCH_SELECTOR is required")
-                await page.goto(str(self._settings.mpstats_base_url), wait_until="domcontentloaded")
-                await page.locator(search_selector).fill(request.query)
-                await page.locator(search_selector).press("Enter")
+                await page.goto(
+                    str(self._settings.mpstats_search_url),
+                    wait_until="domcontentloaded",
+                )
+                await page.get_by_label("Запрос", exact=True).fill(request.query)
+                await page.get_by_role("button", name="Искать", exact=True).click()
+                await page.get_by_text(
+                    f"Результат поиска по запросу {request.query}",
+                    exact=False,
+                ).wait_for()
                 await page.wait_for_load_state("networkidle")
             finally:
                 await context.close()
