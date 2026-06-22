@@ -82,10 +82,20 @@ class PlaywrightMPStatsCollector:
         password = self._settings.mpstats_password
         assert password is not None
         await page.goto(str(self._settings.mpstats_login_url), wait_until="domcontentloaded")
-        await page.get_by_label("Почта", exact=True).fill(self._settings.mpstats_email)
-        await page.get_by_label("Пароль", exact=True).fill(password.get_secret_value())
+        email_input = page.locator(
+            'input[type="email"]:visible, '
+            'input[name="email"]:visible, '
+            'input[autocomplete="username"]:visible'
+        ).first
+        if await email_input.count() == 0:
+            email_input = page.locator("input:visible").nth(0)
+
+        await email_input.fill(self._settings.mpstats_email)
+        await page.locator('input[type="password"]:visible').first.fill(
+            password.get_secret_value()
+        )
         await page.get_by_role("button", name="Войти", exact=True).click()
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_url(lambda url: "/login" not in url.path)
 
     @staticmethod
     def _extract(payloads: list[dict[str, Any]], marker: str) -> list[Any]:
