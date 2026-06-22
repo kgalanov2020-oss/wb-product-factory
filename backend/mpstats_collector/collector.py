@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 from pathlib import Path
@@ -9,7 +10,7 @@ from playwright.async_api import Response, async_playwright
 
 from backend.config import Settings
 
-from .exceptions import MPStatsConfigurationError
+from .exceptions import MPStatsCollectorError, MPStatsConfigurationError
 from .models import CollectionRequest, MPStatsSnapshot
 
 
@@ -23,6 +24,7 @@ class PlaywrightMPStatsCollector:
         api_payloads: list[dict[str, Any]] = []
         storage_path = self._settings.mpstats_storage_state_path
         storage_path.parent.mkdir(parents=True, exist_ok=True)
+        json_received = asyncio.Event()
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=self._settings.mpstats_headless)
@@ -41,13 +43,13 @@ class PlaywrightMPStatsCollector:
                 except Exception:
                     return
                 api_payloads.append({"url": response.url, "status": response.status, "data": payload})
+                json_received.set()
 
             try:
                 if not storage_path.exists():
                     await self._login(page, storage_path)
                     await context.storage_state(path=str(storage_path))
 
-                page.on("response", capture_json)
                 await page.goto(
                     str(self._settings.mpstats_search_url),
                     wait_until="domcontentloaded",
@@ -61,12 +63,18 @@ class PlaywrightMPStatsCollector:
                     "xpath=ancestor::div[.//input][1]"
                 ).locator("input:visible").first
                 await search_input.fill(request.query)
+                page.on("response", capture_json)
                 await search_button.click()
-                await page.get_by_text(
-                    f"Результат поиска по запросу {request.query}",
-                    exact=False,
-                ).wait_for()
-                await page.wait_for_load_state("networkidle")
+                try:
+                    await asyncio.wait_for(
+                        json_received.wait(),
+                        timeout=self._settings.mpstats_timeout_ms / 1000,
+                    )
+                except TimeoutError as exc:
+                    raise MPStatsCollectorError(
+                        "MPStats search returned no JSON data"
+                    ) from exc
+                await page.wait_for_timeout(2_000)
             finally:
                 await context.close()
                 await browser.close()
