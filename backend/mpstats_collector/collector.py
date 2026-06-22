@@ -22,6 +22,7 @@ class PlaywrightMPStatsCollector:
         self._allowed_host = (urlparse(str(settings.mpstats_base_url)).hostname or "").lower()
     async def collect(self, request: CollectionRequest) -> MPStatsSnapshot:
         api_payloads: list[dict[str, Any]] = []
+        grid_rows: list[dict[str, str]] = []
         storage_path = self._settings.mpstats_storage_state_path
         storage_path.parent.mkdir(parents=True, exist_ok=True)
         json_received = asyncio.Event()
@@ -76,6 +77,7 @@ class PlaywrightMPStatsCollector:
                     ) from exc
                 # MPStats loads the result grid through follow-up API requests.
                 await page.wait_for_timeout(10_000)
+                grid_rows = await self._extract_visible_grid(page)
             finally:
                 await context.close()
                 await browser.close()
@@ -84,7 +86,7 @@ class PlaywrightMPStatsCollector:
             query=request.query,
             collected_at=datetime.now(timezone.utc),
             niches=self._extract(api_payloads, "nich"),
-            competitors=self._extract(api_payloads, "compet"),
+            competitors=grid_rows or self._extract(api_payloads, "compet"),
             sales=self._extract(api_payloads, "sale"),
             prices=self._extract(api_payloads, "price"),
             revenue=self._extract(api_payloads, "revenue"),
@@ -117,6 +119,34 @@ class PlaywrightMPStatsCollector:
     @staticmethod
     def _extract(payloads: list[dict[str, Any]], marker: str) -> list[Any]:
         return [item["data"] for item in payloads if marker in item["url"].lower()]
+
+    @staticmethod
+    async def _extract_visible_grid(page: Any) -> list[dict[str, str]]:
+        for row_selector in ('[role="row"]:visible', "tbody tr:visible", ".ag-row:visible"):
+            rows = page.locator(row_selector)
+            extracted: list[dict[str, str]] = []
+            for row_index in range(await rows.count()):
+                cells = rows.nth(row_index).locator(
+                    '[role="gridcell"]:visible, td:visible, .ag-cell:visible'
+                )
+                values: dict[str, str] = {}
+                for cell_index in range(await cells.count()):
+                    cell = cells.nth(cell_index)
+                    text = (await cell.inner_text()).strip()
+                    if not text:
+                        continue
+                    key = (
+                        await cell.get_attribute("col-id")
+                        or await cell.get_attribute("data-column")
+                        or await cell.get_attribute("aria-colindex")
+                        or f"column_{cell_index + 1}"
+                    )
+                    values[key] = text
+                if len(values) >= 2:
+                    extracted.append(values)
+            if extracted:
+                return extracted
+        return []
 
     def _is_allowed_url(self, url: str) -> bool:
         host = (urlparse(url).hostname or "").lower()
