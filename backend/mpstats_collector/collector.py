@@ -74,7 +74,8 @@ class PlaywrightMPStatsCollector:
                     raise MPStatsCollectorError(
                         "MPStats search returned no JSON data"
                     ) from exc
-                await page.wait_for_timeout(2_000)
+                # MPStats loads the result grid through follow-up API requests.
+                await page.wait_for_timeout(10_000)
             finally:
                 await context.close()
                 await browser.close()
