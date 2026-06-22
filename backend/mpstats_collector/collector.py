@@ -60,9 +60,7 @@ class PlaywrightMPStatsCollector:
                     name="Искать",
                     exact=True,
                 )
-                search_input = search_button.locator(
-                    "xpath=ancestor::div[.//input][1]"
-                ).locator("input:visible").first
+                search_input = page.locator("input:visible").last
                 await search_input.fill(request.query)
                 page.on("response", capture_json)
                 await search_button.click()
