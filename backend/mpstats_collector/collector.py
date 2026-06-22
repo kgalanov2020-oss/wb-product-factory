@@ -52,8 +52,16 @@ class PlaywrightMPStatsCollector:
                     str(self._settings.mpstats_search_url),
                     wait_until="domcontentloaded",
                 )
-                await page.get_by_label("Запрос", exact=True).fill(request.query)
-                await page.get_by_role("button", name="Искать", exact=True).click()
+                search_button = page.get_by_role(
+                    "button",
+                    name="Искать",
+                    exact=True,
+                )
+                search_input = search_button.locator(
+                    "xpath=ancestor::div[.//input][1]"
+                ).locator("input:visible").first
+                await search_input.fill(request.query)
+                await search_button.click()
                 await page.get_by_text(
                     f"Результат поиска по запросу {request.query}",
                     exact=False,
