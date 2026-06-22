@@ -60,7 +60,10 @@ class PlaywrightMPStatsCollector:
                     name="Искать",
                     exact=True,
                 )
-                search_input = page.locator("input:visible").last
+                query_label = page.get_by_text("Запрос", exact=True)
+                if await query_label.count() != 1:
+                    raise MPStatsCollectorError("MPStats query field label is not unique")
+                search_input = query_label.locator("xpath=following::input[1]")
                 await search_input.fill(request.query)
                 page.on("response", capture_json)
                 await search_button.click()
