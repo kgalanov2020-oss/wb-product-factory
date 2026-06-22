@@ -95,7 +95,7 @@ class PlaywrightMPStatsCollector:
             password.get_secret_value()
         )
         await page.get_by_role("button", name="Войти", exact=True).click()
-        await page.wait_for_url(lambda url: "/login" not in url.path)
+        await page.wait_for_url(lambda url: "/login" not in url)
 
     @staticmethod
     def _extract(payloads: list[dict[str, Any]], marker: str) -> list[Any]:
