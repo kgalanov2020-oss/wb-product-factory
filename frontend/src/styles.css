@@ -270,6 +270,31 @@ header p,
   line-height: 1.35;
 }
 
+.competitors {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.competitors strong {
+  margin: 0;
+}
+
+.competitors div {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid #dce3ea;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.competitors em {
+  color: #667085;
+  font-style: normal;
+  font-size: 14px;
+}
+
 .product-card img,
 .no-photo {
   width: 180px;

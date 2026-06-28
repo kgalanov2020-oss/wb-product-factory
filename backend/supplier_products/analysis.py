@@ -44,6 +44,8 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
         if _is_wb_public_snapshot(snapshot)
         else "Авторасчет по текущему снимку MPStats. Требует проверки после нормализации данных."
     )
+    if competitor_count and market_avg is None:
+        source_note = "MPStats API вернул конкурентов, но не вернул цены и продажи на этом тарифе/endpoint."
     if not has_usable_data:
         source_note = "Анализ не дал рыночных данных: MPStats/WB не вернули конкурентов, цены или продажи."
 

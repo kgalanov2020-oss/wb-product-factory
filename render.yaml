@@ -46,6 +46,8 @@ services:
         sync: false
       - key: MPSTATS_PASSWORD
         sync: false
+      - key: MPSTATS_API_TOKEN
+        sync: false
       - key: AIDENTIKA_BASE_URL
         value: https://api.aidentika.com/api/v1/public
       - key: AIDENTIKA_API_KEY

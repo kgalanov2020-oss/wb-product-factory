@@ -19,6 +19,7 @@ const DEFAULT_API_URL =
 type Integrations = {
   supabase: boolean;
   mpstats_login: boolean;
+  mpstats_api: boolean;
   aidentika: boolean;
   openai: boolean;
   gemini: boolean;
@@ -87,6 +88,19 @@ type ProductAnalysis = {
   margin_percent?: number | null;
   launch_score?: number | null;
   notes?: string | null;
+  raw?: {
+    mpstats_snapshot?: {
+      competitors?: Array<{
+        name?: string | null;
+        brand?: string | { name?: string | null } | null;
+        supplier?: string | { name?: string | null } | null;
+        price?: string | number | null;
+        sales?: number | null;
+        revenue?: string | number | null;
+        nm_id?: string | number | null;
+      }>;
+    };
+  };
 };
 
 function App() {
@@ -477,6 +491,7 @@ function App() {
           <div className="status-grid">
             <Status label="Supabase" ok={integrations?.supabase} />
             <Status label="MPStats" ok={integrations?.mpstats_login} />
+            <Status label="MPStats API" ok={integrations?.mpstats_api} />
             <Status label="Aidentika" ok={integrations?.aidentika} />
             <Status label="GPT" ok={integrations?.openai} />
             <Status label="Gemini" ok={integrations?.gemini} />
@@ -508,15 +523,36 @@ function Status({ label, ok }: { label: string; ok?: boolean }) {
 
 function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
   return (
-    <dl className="analysis-grid">
-      <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
-      <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)}</dd>
-      <dt>Продажи</dt><dd>{analysis.estimated_sales ?? "нет данных"}</dd>
-      <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)}</dd>
-      <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)}</dd>
-      <dt>Score</dt><dd>{analysis.launch_score ?? "нет данных"}</dd>
-      <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
-    </dl>
+    <>
+      <dl className="analysis-grid">
+        <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
+        <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)}</dd>
+        <dt>Продажи</dt><dd>{analysis.estimated_sales ?? "нет данных"}</dd>
+        <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)}</dd>
+        <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)}</dd>
+        <dt>Score</dt><dd>{analysis.launch_score ?? "нет данных"}</dd>
+        <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
+      </dl>
+      <TopCompetitors analysis={analysis} />
+    </>
+  );
+}
+
+function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
+  const competitors = analysis.raw?.mpstats_snapshot?.competitors?.slice(0, 5) ?? [];
+  if (!competitors.length) {
+    return null;
+  }
+  return (
+    <div className="competitors">
+      <strong>Найденные конкуренты</strong>
+      {competitors.map((competitor, index) => (
+        <div key={`${competitor.nm_id ?? index}-${competitor.name ?? ""}`}>
+          <span>{competitor.name ?? "Без названия"}</span>
+          <em>{formatEntityName(competitor.brand)} / {formatEntityName(competitor.supplier)}</em>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -544,6 +580,16 @@ function formatPriceRange(analysis: ProductAnalysis) {
     return "нет данных";
   }
   return `${formatMoney(analysis.market_price_min)} / ${formatMoney(analysis.market_price_avg)} / ${formatMoney(analysis.market_price_max)}`;
+}
+
+function formatEntityName(value?: string | { name?: string | null } | null) {
+  if (!value) {
+    return "нет данных";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return value.name ?? "нет данных";
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

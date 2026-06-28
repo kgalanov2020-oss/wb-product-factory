@@ -102,6 +102,7 @@ async def integrations_health() -> dict[str, bool]:
     return {
         "supabase": settings.supabase_configured,
         "mpstats_login": settings.mpstats_login_configured,
+        "mpstats_api": settings.mpstats_api_configured,
         "aidentika": settings.aidentika_configured,
         "openai": settings.openai_configured,
         "gemini": settings.gemini_configured,
@@ -146,6 +147,7 @@ def get_supplier_product_service(request: Request) -> SupplierProductService:
     return SupplierProductService(
         repository=request.app.state.supplier_product_repository,
         mpstats_service=request.app.state.mpstats_service,
+        settings=settings,
     )
 
 

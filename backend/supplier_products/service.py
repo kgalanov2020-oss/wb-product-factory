@@ -4,12 +4,12 @@ from uuid import UUID
 
 import httpx
 
-from backend.mpstats_collector.models import CollectionRequest
-from backend.mpstats_collector.exceptions import MPStatsCollectorError
 from backend.mpstats_collector.service import MPStatsCollectorService
+from backend.config import Settings
 
 from .analysis import build_market_analysis
 from .exceptions import SupplierPriceListError
+from .mpstats_api import collect_mpstats_api_snapshot
 from .models import (
     PriceListImportResult,
     ProductAnalysis,
@@ -21,7 +21,6 @@ from .models import (
 from .parser import parse_price_list
 from .repository import SupplierProductRepository
 from .workbook import parse_zvezda_workbook
-from .wb_public import collect_wb_public_snapshot
 
 
 class SupplierProductService:
@@ -29,9 +28,11 @@ class SupplierProductService:
         self,
         repository: SupplierProductRepository,
         mpstats_service: MPStatsCollectorService | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self._repository = repository
         self._mpstats_service = mpstats_service
+        self._settings = settings
 
     async def import_from_url(self, url: str, supplier: str) -> PriceListImportResult:
         url, filename = _normalize_price_list_url(url)
@@ -114,27 +115,49 @@ class SupplierProductService:
         return await self._repository.get_analysis(product_id)
 
     async def analyze_product(self, product_id: UUID) -> ProductAnalysis | None:
-        if self._mpstats_service is None:
-            raise SupplierPriceListError("MPStats service is not configured")
         product = await self._repository.get_product(product_id)
         if product is None:
             return None
-        try:
-            snapshot = (await self._mpstats_service.collect(CollectionRequest(query=product.name))).collection
-        except MPStatsCollectorError:
-            snapshot = None
-        if snapshot is None or not snapshot.competitors:
+        if self._settings is not None and getattr(self._settings, "mpstats_api_configured", False):
             try:
-                snapshot = await collect_wb_public_snapshot(product.name)
-            except httpx.HTTPError as exc:
+                snapshot = await collect_mpstats_api_snapshot(self._settings, product.name)
+            except httpx.HTTPStatusError as exc:
                 analysis = ProductAnalysis(
                     product_id=product.id,
                     status="failed",
-                    notes=f"WB public search is temporarily unavailable: {exc.response.status_code if hasattr(exc, 'response') and exc.response else exc}",
+                    notes=f"MPStats API недоступен: HTTP {exc.response.status_code}. Проверьте MPSTATS_API_TOKEN.",
                     raw={"error": str(exc)},
                 )
                 await self._repository.save_analysis(analysis)
                 return analysis
+            except httpx.HTTPError as exc:
+                analysis = ProductAnalysis(
+                    product_id=product.id,
+                    status="failed",
+                    notes=f"MPStats API недоступен: {exc}",
+                    raw={"error": str(exc)},
+                )
+                await self._repository.save_analysis(analysis)
+                return analysis
+        else:
+            analysis = ProductAnalysis(
+                product_id=product.id,
+                status="failed",
+                notes="Для анализа нужен MPSTATS_API_TOKEN в Render. Браузерный MPStats и WB public search не дают стабильные рыночные данные.",
+                raw={"error": "MPSTATS_API_TOKEN is not configured"},
+            )
+            await self._repository.save_analysis(analysis)
+            return analysis
+
+        if snapshot is None or not snapshot.competitors:
+            analysis = ProductAnalysis(
+                product_id=product.id,
+                status="failed",
+                notes="MPStats API не вернул конкурентов по этому запросу.",
+                raw={"error": "MPStats API returned no competitors"},
+            )
+            await self._repository.save_analysis(analysis)
+            return analysis
         analysis = build_market_analysis(product, snapshot)
         await self._repository.save_analysis(analysis)
         return analysis
