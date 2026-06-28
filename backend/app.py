@@ -102,6 +102,8 @@ async def integrations_health() -> dict[str, bool]:
         "supabase": settings.supabase_configured,
         "mpstats_login": settings.mpstats_login_configured,
         "aidentika": settings.aidentika_configured,
+        "openai": settings.openai_configured,
+        "gemini": settings.gemini_configured,
     }
 
 

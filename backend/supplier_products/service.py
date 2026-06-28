@@ -9,9 +9,16 @@ from backend.mpstats_collector.service import MPStatsCollectorService
 
 from .analysis import build_market_analysis
 from .exceptions import SupplierPriceListError
-from .models import PriceListImportResult, ProductAnalysis, ProductListResponse, SupplierProduct
+from .models import (
+    PriceListImportResult,
+    ProductAnalysis,
+    ProductListResponse,
+    SupplierProduct,
+    WorkbookImportResult,
+)
 from .parser import parse_price_list
 from .repository import SupplierProductRepository
+from .workbook import parse_zvezda_workbook
 
 
 class SupplierProductService:
@@ -32,8 +39,16 @@ class SupplierProductService:
         content_type = response.headers.get("content-type", "")
         if filename is None:
             filename = "price.xlsx" if "spreadsheet" in content_type else "price.csv"
-        products = parse_price_list(response.content, filename, supplier)
-        imported = await self._repository.upsert_products(products)
+        if filename.lower().endswith(".xlsx"):
+            products, mappings, stocks = parse_zvezda_workbook(response.content, supplier)
+            imported = await self._repository.upsert_products(products)
+            await self._repository.upsert_mappings(mappings)
+            await self._repository.upsert_stocks(stocks)
+            await self._repository.refresh_product_statuses(supplier)
+        else:
+            products = parse_price_list(response.content, filename, supplier)
+            imported = await self._repository.upsert_products(products)
+            await self._repository.refresh_product_statuses(supplier)
         return PriceListImportResult(
             supplier=supplier,
             imported=imported,
@@ -47,13 +62,40 @@ class SupplierProductService:
         filename: str,
         supplier: str,
     ) -> PriceListImportResult:
-        products = parse_price_list(content, filename, supplier)
-        imported = await self._repository.upsert_products(products)
+        if filename.lower().endswith(".xlsx"):
+            products, mappings, stocks = parse_zvezda_workbook(content, supplier)
+            imported = await self._repository.upsert_products(products)
+            await self._repository.upsert_mappings(mappings)
+            await self._repository.upsert_stocks(stocks)
+            await self._repository.refresh_product_statuses(supplier)
+        else:
+            products = parse_price_list(content, filename, supplier)
+            imported = await self._repository.upsert_products(products)
+            await self._repository.refresh_product_statuses(supplier)
         return PriceListImportResult(
             supplier=supplier,
             imported=imported,
             skipped=max(len(products) - imported, 0),
             persisted=imported > 0,
+        )
+
+    async def import_workbook_from_url(self, url: str, supplier: str) -> WorkbookImportResult:
+        url, _filename = _normalize_price_list_url(url)
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            response = await client.get(url)
+        if response.is_error:
+            raise SupplierPriceListError(f"Workbook download failed: {response.status_code}")
+        products, mappings, stocks = parse_zvezda_workbook(response.content, supplier)
+        products_imported = await self._repository.upsert_products(products)
+        mappings_imported = await self._repository.upsert_mappings(mappings)
+        stocks_imported = await self._repository.upsert_stocks(stocks)
+        await self._repository.refresh_product_statuses(supplier)
+        return WorkbookImportResult(
+            supplier=supplier,
+            products_imported=products_imported,
+            mappings_imported=mappings_imported,
+            stocks_imported=stocks_imported,
+            persisted=products_imported > 0,
         )
 
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:

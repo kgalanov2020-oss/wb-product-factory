@@ -1,0 +1,1877 @@
+[
+  {
+    "file": "n8n_exports\\wf1-wb-stocks-snapshot.json",
+    "name": "WF 1 WB Остатки — снимок",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "HTTP Request",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://statistics-api.wildberries.ru/api/v1/supplier/stocks",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const snapshotDate = new Date().toISOString().slice(0, 10); return items.map(i => { const r = i.json; return { json: { \"Дата снимка\": snapshotDate, \"Артикул WB\": r.nmId, \"Бренд\": r.brand, \"Предмет\": r.subject, \"Артикул продавца\": r.supplierArticle, \"Остаток на складах\": r.quantityFull ?? r.quantity ?? 0, \"В пути до клиента\": r.inWayToClient ?? 0, \"В пути возвраты\": r.inWayFromClient ?? 0 } }; });"
+      },
+      {
+        "name": "Append row in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "append",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "WB Остатки",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=0"
+        },
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "Append row in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf2-wb-analytics-sales-by-stocks.json",
+    "name": "WF 2 WB Аналитика — продажи по остаткам",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "WB Остатки",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=0"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet1",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1945772316,
+          "mode": "list",
+          "cachedResultName": "Справочник Звезда",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1945772316"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const stocks = $('Get row(s) in sheet').all().map(i => i.json); const catalog = $('Get row(s) in sheet1').all().map(i => i.json); const MONTH_WEIGHT = 0.7; const WEEK_WEIGHT = 0.3; function clean(value) { return String(value ?? '').trim(); } function num(value) { if (value === undefined || value === null || value === '') return 0; return Number(String(value).replace(',', '.').replace(/\\s/g, '')) || 0; } function daysBetween(date1, date2) { return Math.max( 1, Math.round((new Date(date2) - new Da"
+      },
+      {
+        "name": "Merge",
+        "type": "n8n-nodes-base.merge",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Append row in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "append",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1960164485,
+          "mode": "list",
+          "cachedResultName": "Аналитика",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1960164485"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Clear sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "clear",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1960164485,
+          "mode": "list",
+          "cachedResultName": "Аналитика",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1960164485"
+        },
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get row(s) in sheet",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Get row(s) in sheet1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet1": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "Clear sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Clear sheet": {
+        "main": [
+          [
+            {
+              "node": "Append row in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf3-supplier-order.json",
+    "name": "WF 3 Заказ поставщику",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = items.map(i => i.json); function clean(value) { return String(value ?? '').trim(); } function num(value) { if (value === undefined || value === null || value === '') return 0; return Number(String(value).replace(',', '.').replace(/\\s/g, '')) || 0; } const dates = [...new Set( rows .map(r => clean(r['Дата анализа'])) .filter(Boolean) )].sort(); const latestDate = dates[dates.length - 1]; const latestRows = rows.filter(r => { return clean(r['Дата анализа']) === latestDate; }); const o"
+      },
+      {
+        "name": "Send an Email",
+        "type": "n8n-nodes-base.emailSend",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Convert to File",
+        "type": "n8n-nodes-base.convertToFile",
+        "operation": "xlsx",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1960164485,
+          "mode": "list",
+          "cachedResultName": "Аналитика",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1960164485"
+        },
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get row(s) in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "Convert to File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Convert to File": {
+        "main": [
+          [
+            {
+              "node": "Send an Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf4-stock-deficit-control.json",
+    "name": "WF 4 Контроль дефицита",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1960164485,
+          "mode": "list",
+          "cachedResultName": "Аналитика",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1960164485"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = items.map(i => i.json); function clean(value) { return String(value ?? '').trim(); } function num(value) { if (value === undefined || value === null || value === '') return 0; return Number(String(value).replace(',', '.').replace(/\\s/g, '')) || 0; } const products = rows.filter(r => { const name = clean(r['Наименование']); return name && name !== 'К ЗАКАЗУ ИТОГО' && name !== 'ИТОГО'; }); const critical = products.filter(r => { const stockDays = num(r['Дней запаса фактически']); retu"
+      },
+      {
+        "name": "Send a text message",
+        "type": "n8n-nodes-base.telegram",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript1",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const source = $('Code in JavaScript').first().json; const orderRows = source.orderRows || []; if (!Array.isArray(orderRows) || orderRows.length === 0) { return []; } return orderRows.map(row => ({ json: { 'Артикул': row['Артикул'], 'Наименование': row['Наименование'], 'Количество': row['Количество'], 'Цена': row['Цена'], 'Сумма': row['Сумма'] } }));"
+      },
+      {
+        "name": "Send a document",
+        "type": "n8n-nodes-base.telegram",
+        "operation": "sendDocument",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Convert to File",
+        "type": "n8n-nodes-base.convertToFile",
+        "operation": "xlsx",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Upload file",
+        "type": "n8n-nodes-base.googleDrive",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Append row in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "append",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 977196966,
+          "mode": "list",
+          "cachedResultName": "Журнал_заказов",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=977196966"
+        },
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get row(s) in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "Send a text message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send a text message": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript1": {
+        "main": [
+          [
+            {
+              "node": "Convert to File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Convert to File": {
+        "main": [
+          [
+            {
+              "node": "Send a document",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Upload file",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send a document": {
+        "main": [
+          []
+        ]
+      },
+      "Upload file": {
+        "main": [
+          [
+            {
+              "node": "Append row in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf5-telegram-callback.json",
+    "name": "WF 5 Telegram Callback",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Code in JavaScript",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const callback = $json.callback_query; return [ { json: { action: callback.data, chat_id: callback.message.chat.id, message_id: callback.message.message_id, user_id: callback.from.id, user_name: callback.from.first_name, text: callback.message.text || '' } } ];"
+      },
+      {
+        "name": "Switch",
+        "type": "n8n-nodes-base.switch",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Telegram Trigger",
+        "type": "n8n-nodes-base.telegramTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Send an Email",
+        "type": "n8n-nodes-base.emailSend",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 977196966,
+          "mode": "list",
+          "cachedResultName": "Журнал_заказов",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=977196966"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Download file",
+        "type": "n8n-nodes-base.googleDrive",
+        "operation": "download",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Send a text message",
+        "type": "n8n-nodes-base.telegram",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Update row in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "update",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 977196966,
+          "mode": "list",
+          "cachedResultName": "Журнал_заказов",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=977196966"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet1",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing",
+          "mode": "url"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1960164485,
+          "mode": "list",
+          "cachedResultName": "Аналитика",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1960164485"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript1",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = items.map(i => i.json); function clean(value) { return String(value ?? '').trim(); } function num(value) { if (value === undefined || value === null || value === '') return 0; return Number(String(value).replace(',', '.').replace(/\\s/g, '')) || 0; } const dates = [...new Set( rows .map(r => clean(r['Дата анализа'])) .filter(Boolean) )].sort(); const latestDate = dates[dates.length - 1]; const latestRows = rows.filter(r => { return clean(r['Дата анализа']) === latestDate; }); const o"
+      },
+      {
+        "name": "Convert to File",
+        "type": "n8n-nodes-base.convertToFile",
+        "operation": "xlsx",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Send an Email1",
+        "type": "n8n-nodes-base.emailSend",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Send a text message1",
+        "type": "n8n-nodes-base.telegram",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "Switch",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Telegram Trigger": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Switch": {
+        "main": [
+          [
+            {
+              "node": "Get row(s) in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [],
+          [],
+          [],
+          [
+            {
+              "node": "Get row(s) in sheet1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet": {
+        "main": [
+          [
+            {
+              "node": "Download file",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download file": {
+        "main": [
+          [
+            {
+              "node": "Send an Email",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send an Email": {
+        "main": [
+          [
+            {
+              "node": "Update row in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update row in sheet": {
+        "main": [
+          [
+            {
+              "node": "Send a text message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet1": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript1": {
+        "main": [
+          [
+            {
+              "node": "Convert to File",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Convert to File": {
+        "main": [
+          [
+            {
+              "node": "Send an Email1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send an Email1": {
+        "main": [
+          [
+            {
+              "node": "Send a text message1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf6-gpt-wb-analyst.json",
+    "name": "WF 6 GPT Аналитик WB",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Prepare Sales Summary",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = $input.all().map(i => i.json); const summary = {}; let maxDate = null; for (const r of rows) { const saleDate = r.date || r.lastChangeDate || null; if (saleDate) { const d = saleDate.slice(0, 10); if (!maxDate || d > maxDate) maxDate = d; } } const periodTo = maxDate || new Date().toISOString().slice(0, 10); const toDate = new Date(periodTo); toDate.setDate(toDate.getDate() - 6); const periodFrom = toDate.toISOString().slice(0, 10); const periodDays = 7; for (const r of rows) { cons"
+      },
+      {
+        "name": "WB Sales Last 7 Days",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://statistics-api.wildberries.ru/api/v1/supplier/sales",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "WB Stocks",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://statistics-api.wildberries.ru/api/v1/supplier/stocks",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "WB Finance",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "WB Ads Campaigns",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://advert-api.wildberries.ru/adv/v1/promotion/count",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "WB Ads Stats",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": "POST",
+        "url": "https://advert-api.wildberries.ru/adv/v1/promotion/adverts",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Prepare GPT Analytics",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const sales = $('Prepare Sales Summary').first().json; const stocks = $input.all().map(i => i.json); return [{ json: { date: new Date().toISOString().slice(0, 10), salesSummary: sales, stocks: stocks.slice(0, 150) } }];"
+      },
+      {
+        "name": "Message a model",
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Send a text message",
+        "type": "n8n-nodes-base.telegram",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Calculate Business Metrics",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const sales = $('Prepare Sales Summary').first().json; const stocks = $('WB Stocks').all().map(i => i.json); const products = [...sales.products].sort( (a, b) => (b.revenue || 0) - (a.revenue || 0) ); const revenue = sales.totalRevenue || 0; const orders = sales.totalOrders || 0; const sku = sales.uniqueProducts || 0; const avgRevenuePerSku = sku > 0 ? Math.round(revenue / sku) : 0; const top5Products = products.slice(0, 5); const top10Products = products.slice(0, 10); const top5Revenue = top5Pr"
+      },
+      {
+        "name": "Calculate Finance Metrics",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = $input.all() .map(i => i.json) .filter(r => Object.keys(r).length > 0); let logistics = 0; let returns = 0; let forPay = 0; let commission = 0; let retail = 0; for (const r of rows) { logistics += Number(r.delivery_rub || 0); returns += Number(r.return_amount || 0); forPay += Number(r.ppvz_for_pay || 0); commission += Math.abs( Number(r.ppvz_sales_commission || 0) ); retail += Number( r.retail_price_withdisc_rub || 0 ); } const estimatedNet = forPay - logistics - commission; return "
+      },
+      {
+        "name": "Merge Analytics",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const business = $('Calculate Business Metrics').first().json; const finance = $('Calculate Finance Metrics').first().json; const sales = $('Prepare Sales Summary').first().json; return [{ json: { period: sales.period || 'last_7_days', periodLabel: 'Продажи за последние 7 дней', periodDays: 7, ...business, finance } }];"
+      },
+      {
+        "name": "Prepare Top10 For Sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "append",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 62610046,
+          "mode": "list",
+          "cachedResultName": "ТОП_товары",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=62610046"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Prepare Top10 Data",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const data = $('Calculate Business Metrics').first().json; return (data.top10Products || []).map((p, index) => ({ json: { date: new Date().toISOString().slice(0, 10), periodFrom: data.periodFrom, periodTo: data.periodTo, rank: index + 1, supplierArticle: p.supplierArticle || '', subject: p.subject || '', brand: p.brand || '', nmId: p.nmId || '', orders: p.orders || 0, revenue: Math.round(p.revenue || 0), avgPrice: p.avgPrice || 0, stock: p.stock || 0 } }));"
+      },
+      {
+        "name": "Clear sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "clear",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 62610046,
+          "mode": "list",
+          "cachedResultName": "ТОП_товары",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=62610046"
+        },
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "WB Sales Last 7 Days",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WB Sales Last 7 Days": {
+        "main": [
+          [
+            {
+              "node": "Prepare Sales Summary",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Sales Summary": {
+        "main": [
+          [
+            {
+              "node": "WB Stocks",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WB Stocks": {
+        "main": [
+          [
+            {
+              "node": "Prepare GPT Analytics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WB Finance": {
+        "main": [
+          [
+            {
+              "node": "Calculate Finance Metrics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WB Ads Campaigns": {
+        "main": [
+          [
+            {
+              "node": "WB Ads Stats",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare GPT Analytics": {
+        "main": [
+          [
+            {
+              "node": "Calculate Business Metrics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Message a model": {
+        "main": [
+          [
+            {
+              "node": "Send a text message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send a text message": {
+        "main": [
+          []
+        ]
+      },
+      "Calculate Business Metrics": {
+        "main": [
+          [
+            {
+              "node": "Prepare Top10 Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Calculate Finance Metrics": {
+        "main": [
+          [
+            {
+              "node": "Merge Analytics",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge Analytics": {
+        "main": [
+          [
+            {
+              "node": "Message a model",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Top10 For Sheet": {
+        "main": [
+          [
+            {
+              "node": "WB Finance",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Top10 Data": {
+        "main": [
+          [
+            {
+              "node": "Clear sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Clear sheet": {
+        "main": [
+          [
+            {
+              "node": "Prepare Top10 For Sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf7-competitors.json",
+    "name": "WF 7 Конкуренты",
+    "active": false,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Get row(s) in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 62610046,
+          "mode": "list",
+          "cachedResultName": "ТОП_товары",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=62610046"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Prepare Competitor Search",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = $input.all(); return rows.map(item => { const p = item.json; return { json: { nmId: p.nmId, supplierArticle: p.supplierArticle, subject: p.subject, brand: p.brand, avgPrice: p.avgPrice, revenue: p.revenue, orders: p.orders, searchQuery: `${p.subject} ${p.brand}` } }; });"
+      },
+      {
+        "name": "WB Search Competitors",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://search.wb.ru/exactmatch/ru/common/v9/search",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Loop Over Items",
+        "type": "n8n-nodes-base.splitInBatches",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Wait",
+        "type": "n8n-nodes-base.wait",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "WB Product Card",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://card.wb.ru/cards/v2/detail",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get row(s) in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get row(s) in sheet": {
+        "main": [
+          [
+            {
+              "node": "Prepare Competitor Search",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Competitor Search": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Over Items": {
+        "main": [
+          [],
+          [
+            {
+              "node": "Wait",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WB Search Competitors": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait": {
+        "main": [
+          [
+            {
+              "node": "WB Product Card",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WB Product Card": {
+        "main": [
+          [
+            {
+              "node": "WB Search Competitors",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf8-card-and-new-products-rating.json",
+    "name": "WF8 “Рейтинг карточек и новых товаров”",
+    "active": true,
+    "nodes": [
+      {
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Merge",
+        "type": "n8n-nodes-base.merge",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Prepare Rating",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "const rows = $input.all().map(i => i.json); function clean(v) { return String(v ?? '').trim(); } function num(v) { if (v === undefined || v === null || v === '') return 0; return Number(String(v).replace(',', '.').replace(/\\s/g, '')) || 0; } // Прайс поставщика const priceRows = rows.filter(r => r['Артикул производителя'] && r['Наименование'] && r['Цена закупки'] !== undefined && r['Артикул продавца'] === undefined && r['Артикул WB'] === undefined ); // Справочник созданных карточек const cardRo"
+      },
+      {
+        "name": "Прайс Звезда",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 275598692,
+          "mode": "list",
+          "cachedResultName": "Прайс Звезда",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=275598692"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Clear sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "clear",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 923730925,
+          "mode": "list",
+          "cachedResultName": "Рейтинг карточек",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=923730925"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Append row in sheet",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": "append",
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 923730925,
+          "mode": "list",
+          "cachedResultName": "Рейтинг карточек",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=923730925"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Restore Rating Items",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "return $('Prepare Rating').all();"
+      },
+      {
+        "name": "Справочник звезда",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1945772316,
+          "mode": "list",
+          "cachedResultName": "Справочник Звезда",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1945772316"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Аналитика",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 1960164485,
+          "mode": "list",
+          "cachedResultName": "Аналитика",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=1960164485"
+        },
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Прайс Звезда",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Аналитика",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Справочник звезда",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge": {
+        "main": [
+          [
+            {
+              "node": "Prepare Rating",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Прайс Звезда": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Rating": {
+        "main": [
+          [
+            {
+              "node": "Clear sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Clear sheet": {
+        "main": [
+          [
+            {
+              "node": "Restore Rating Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Restore Rating Items": {
+        "main": [
+          [
+            {
+              "node": "Append row in sheet",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Справочник звезда": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Аналитика": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 2
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "file": "n8n_exports\\wf9-card-creation-priority.json",
+    "name": "WF9 “Приоритет создания карточек”",
+    "active": false,
+    "nodes": [
+      {
+        "name": "When clicking ‘Execute workflow’",
+        "type": "n8n-nodes-base.manualTrigger",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "Рейтинг карточек",
+        "type": "n8n-nodes-base.googleSheets",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": {
+          "__rl": true,
+          "value": "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I",
+          "mode": "list",
+          "cachedResultName": "WB Project",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=drivesdk"
+        },
+        "sheet_name": {
+          "__rl": true,
+          "value": 923730925,
+          "mode": "list",
+          "cachedResultName": "Рейтинг карточек",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit#gid=923730925"
+        },
+        "code_preview": null
+      },
+      {
+        "name": "Code in JavaScript",
+        "type": "n8n-nodes-base.code",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": "return items.filter(item => { const hasCard = String(item.json['Есть карточка WB'] ?? '').trim().toLowerCase(); const price = Number(String(item.json['Цена закупки'] ?? 0).replace(',', '.')) || 0; return hasCard === 'нет' && price > 0; });"
+      },
+      {
+        "name": "Limit",
+        "type": "n8n-nodes-base.limit",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": null,
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      },
+      {
+        "name": "HTTP Request",
+        "type": "n8n-nodes-base.httpRequest",
+        "operation": null,
+        "resource": null,
+        "method": null,
+        "url": "https://mpstats.io/api/wb/get/items",
+        "document_id": null,
+        "sheet_name": null,
+        "code_preview": null
+      }
+    ],
+    "connections": {
+      "When clicking ‘Execute workflow’": {
+        "main": [
+          [
+            {
+              "node": "Рейтинг карточек",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Рейтинг карточек": {
+        "main": [
+          [
+            {
+              "node": "Code in JavaScript",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Code in JavaScript": {
+        "main": [
+          [
+            {
+              "node": "Limit",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Limit": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    }
+  }
+]

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     supabase_product_content_actions_table: str = "product_content_actions"
     supabase_supplier_products_table: str = "supplier_products"
     supabase_product_analyses_table: str = "product_analyses"
+    supabase_wb_card_mappings_table: str = "wb_card_mappings"
+    supabase_wb_stock_snapshots_table: str = "wb_stock_snapshots"
 
     mpstats_base_url: HttpUrl = HttpUrl("https://mpstats.io")
     mpstats_login_url: HttpUrl = HttpUrl("https://mpstats.io/login")
@@ -40,6 +42,8 @@ class Settings(BaseSettings):
 
     aidentika_base_url: HttpUrl = HttpUrl("https://api.aidentika.com/api/v1/public")
     aidentika_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
 
     @property
     def supabase_configured(self) -> bool:
@@ -52,6 +56,14 @@ class Settings(BaseSettings):
     @property
     def aidentika_configured(self) -> bool:
         return bool(self.aidentika_api_key)
+
+    @property
+    def openai_configured(self) -> bool:
+        return bool(self.openai_api_key)
+
+    @property
+    def gemini_configured(self) -> bool:
+        return bool(self.gemini_api_key)
 
 
 @lru_cache

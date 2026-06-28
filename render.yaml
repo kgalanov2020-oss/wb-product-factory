@@ -26,6 +26,10 @@ services:
         value: supplier_products
       - key: SUPABASE_PRODUCT_ANALYSES_TABLE
         value: product_analyses
+      - key: SUPABASE_WB_CARD_MAPPINGS_TABLE
+        value: wb_card_mappings
+      - key: SUPABASE_WB_STOCK_SNAPSHOTS_TABLE
+        value: wb_stock_snapshots
       - key: MPSTATS_BASE_URL
         value: https://mpstats.io
       - key: MPSTATS_LOGIN_URL
@@ -45,6 +49,10 @@ services:
       - key: AIDENTIKA_BASE_URL
         value: https://api.aidentika.com/api/v1/public
       - key: AIDENTIKA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
         sync: false
   - type: web
     name: wb-product-factory-ui

@@ -23,8 +23,13 @@ COLUMN_ALIASES = {
     "wholesale_price": ("опт", "оптовая", "закуп", "закупочная", "цена", "price"),
     "retail_price": ("розница", "ррц", "retail"),
     "stock": ("остаток", "наличие", "stock", "qty", "кол-во", "количество"),
+    "pack_units": ("кол-во в 1 кор", "штук в короб", "кратность"),
+    "weight_grams": ("вес", "гр"),
+    "dimensions": ("размер", "габарит"),
+    "description": ("описание",),
+    "order_quantity": ("заказ",),
     "source_url": ("ссылка", "url", "страница"),
-    "photo_urls": ("фото", "картинка", "image", "photo", "изображение"),
+    "photo_urls": ("фото", "картинка", "картинки", "image", "photo", "изображение"),
 }
 
 
@@ -74,14 +79,14 @@ def _headers_for_sheet(title: str, row: Any) -> list[str]:
         return [
             "sku",
             "name",
-            "size",
+            "description",
             "source_url",
             "barcode",
-            "stock",
             "pack_units",
+            "weight_grams",
             "dimensions",
             "wholesale_price",
-            "unused_10",
+            "order_quantity",
             "total",
         ]
     headers: list[str] = []
@@ -113,6 +118,11 @@ def _parse_dict_rows(rows: list[dict[str, Any]], supplier: str) -> list[Supplier
                     wholesale_price=_as_decimal(_first_value(normalized, "wholesale_price")),
                     retail_price=_as_decimal(_first_value(normalized, "retail_price")),
                     stock=_as_int(_first_value(normalized, "stock")),
+                    pack_units=_as_int(_first_value(normalized, "pack_units")),
+                    weight_grams=_as_decimal(_first_value(normalized, "weight_grams")),
+                    dimensions=_as_text(_first_value(normalized, "dimensions")),
+                    description=_as_text(_first_value(normalized, "description")),
+                    order_quantity=_as_int(_first_value(normalized, "order_quantity")),
                     photo_urls=photo_urls,
                     source_url=source_urls[0] if source_urls else None,
                     raw={str(key): value for key, value in row.items()},
@@ -141,6 +151,8 @@ def _first_value(row: dict[str, Any], key: str) -> Any:
 def _as_text(value: Any) -> str | None:
     if value is None:
         return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     text = str(value).strip()
     return text or None
 

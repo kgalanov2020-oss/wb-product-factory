@@ -20,6 +20,8 @@ type Integrations = {
   supabase: boolean;
   mpstats_login: boolean;
   aidentika: boolean;
+  openai: boolean;
+  gemini: boolean;
 };
 
 type SupplierProduct = {
@@ -31,6 +33,11 @@ type SupplierProduct = {
   wholesale_price?: string | null;
   retail_price?: string | null;
   stock?: number | null;
+  pack_units?: number | null;
+  weight_grams?: string | null;
+  dimensions?: string | null;
+  description?: string | null;
+  order_quantity?: number | null;
   photo_urls: string[];
   source_url?: string | null;
   status: string;
@@ -134,7 +141,7 @@ function App() {
 
   async function importUrl() {
     if (!sheetUrl.trim()) {
-      setMessage("Вставьте публичную CSV-ссылку Google Sheets.");
+      setMessage("Вставьте публичную ссылку Google Sheets.");
       return;
     }
     setLoading(true);
@@ -173,6 +180,8 @@ function App() {
           assets: ["main_photo", "infographic", "advantages"],
           facts: [
             product.category ? `категория: ${product.category}` : "товар поставщика Звезда",
+            product.description ? `описание: ${product.description}` : "описание требует проверки",
+            product.dimensions ? `размер: ${product.dimensions}` : "размер не указан",
             product.wholesale_price ? `закупочная цена: ${product.wholesale_price}` : "цена требует проверки",
           ],
           target_audience: "покупатели Wildberries, товары для хобби и сборных моделей",
@@ -263,7 +272,7 @@ function App() {
         <section className="panel" id="import">
           <div className="panel-title">
             <h2>Импорт прайса Звезда</h2>
-            <span>CSV/XLSX или публичная CSV-ссылка Google Sheets</span>
+            <span>CSV/XLSX или публичная ссылка Google Sheets</span>
           </div>
           <div className="import-grid">
             <label className="file-box">
@@ -279,7 +288,7 @@ function App() {
             <input
               value={sheetUrl}
               onChange={(event) => setSheetUrl(event.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/.../export?format=csv"
+              placeholder="https://docs.google.com/spreadsheets/..."
             />
             <button onClick={importUrl} disabled={loading}>Импортировать URL</button>
           </div>
@@ -318,8 +327,12 @@ function App() {
                   <dl>
                     <dt>Артикул</dt><dd>{selected.sku ?? "не указан"}</dd>
                     <dt>Категория</dt><dd>{selected.category ?? "не указана"}</dd>
+                    <dt>Описание</dt><dd>{selected.description ?? "не указано"}</dd>
                     <dt>Закупка</dt><dd>{selected.wholesale_price ?? "не указана"}</dd>
-                    <dt>Остаток</dt><dd>{selected.stock ?? "не указан"}</dd>
+                    <dt>В коробке</dt><dd>{selected.pack_units ?? "не указано"}</dd>
+                    <dt>Вес, гр</dt><dd>{selected.weight_grams ?? "не указан"}</dd>
+                    <dt>Размер, мм</dt><dd>{selected.dimensions ?? "не указан"}</dd>
+                    <dt>Заказ</dt><dd>{selected.order_quantity ?? "не указан"}</dd>
                   </dl>
                 </div>
                 <div className="actions">
@@ -371,6 +384,8 @@ function App() {
             <Status label="Supabase" ok={integrations?.supabase} />
             <Status label="MPStats" ok={integrations?.mpstats_login} />
             <Status label="Aidentika" ok={integrations?.aidentika} />
+            <Status label="GPT" ok={integrations?.openai} />
+            <Status label="Gemini" ok={integrations?.gemini} />
           </div>
         </section>
       </main>

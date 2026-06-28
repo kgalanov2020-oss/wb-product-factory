@@ -27,6 +27,11 @@ class SupplierProductInput(BaseModel):
     wholesale_price: Decimal | None = None
     retail_price: Decimal | None = None
     stock: int | None = None
+    pack_units: int | None = None
+    weight_grams: Decimal | None = None
+    dimensions: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    order_quantity: int | None = None
     photo_urls: list[HttpUrl] = Field(default_factory=list)
     source_url: HttpUrl | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
@@ -42,6 +47,11 @@ class SupplierProduct(BaseModel):
     wholesale_price: Decimal | None
     retail_price: Decimal | None
     stock: int | None
+    pack_units: int | None = None
+    weight_grams: Decimal | None = None
+    dimensions: str | None = None
+    description: str | None = None
+    order_quantity: int | None = None
     photo_urls: list[str]
     source_url: str | None
     status: ProductStatus
@@ -80,3 +90,37 @@ class ProductAnalysis(BaseModel):
 class ProductListResponse(BaseModel):
     products: list[SupplierProduct]
     total: int
+
+
+class WBCardMappingInput(BaseModel):
+    supplier: str = "zvezda"
+    manufacturer_article: str | None = None
+    seller_article: str | None = None
+    wb_article: str | None = None
+    barcode: str | None = None
+    brand: str | None = None
+    subject: str | None = None
+    name: str | None = None
+    purchase_price: Decimal | None = None
+    retail_price: Decimal | None = None
+    pack_units: int | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class WBStockSnapshotInput(BaseModel):
+    wb_article: str
+    seller_article: str | None = None
+    brand: str | None = None
+    subject: str | None = None
+    stock_qty: int = 0
+    in_way_to_client: int = 0
+    in_way_from_client: int = 0
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkbookImportResult(BaseModel):
+    supplier: str
+    products_imported: int
+    mappings_imported: int
+    stocks_imported: int
+    persisted: bool

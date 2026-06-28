@@ -9,7 +9,14 @@ from supabase import Client, create_client
 from backend.config import Settings
 
 from .exceptions import SupplierProductRepositoryError
-from .models import ProductAnalysis, ProductListResponse, SupplierProduct, SupplierProductInput
+from .models import (
+    ProductAnalysis,
+    ProductListResponse,
+    SupplierProduct,
+    SupplierProductInput,
+    WBCardMappingInput,
+    WBStockSnapshotInput,
+)
 
 
 def _repository_error(exc: Exception) -> SupplierProductRepositoryError:
@@ -24,6 +31,9 @@ def _repository_error(exc: Exception) -> SupplierProductRepositoryError:
 
 class SupplierProductRepository(Protocol):
     async def upsert_products(self, products: list[SupplierProductInput]) -> int: ...
+    async def upsert_mappings(self, mappings: list[WBCardMappingInput]) -> int: ...
+    async def upsert_stocks(self, stocks: list[WBStockSnapshotInput]) -> int: ...
+    async def refresh_product_statuses(self, supplier: str) -> None: ...
 
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse: ...
 
@@ -36,6 +46,15 @@ class NullSupplierProductRepository:
     async def upsert_products(self, products: list[SupplierProductInput]) -> int:
         return 0
 
+    async def upsert_mappings(self, mappings: list[WBCardMappingInput]) -> int:
+        return 0
+
+    async def upsert_stocks(self, stocks: list[WBStockSnapshotInput]) -> int:
+        return 0
+
+    async def refresh_product_statuses(self, supplier: str) -> None:
+        return None
+
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
         return ProductListResponse(products=[], total=0)
 
@@ -47,10 +66,19 @@ class NullSupplierProductRepository:
 
 
 class SupabaseSupplierProductRepository:
-    def __init__(self, client: Client, products_table: str, analyses_table: str) -> None:
+    def __init__(
+        self,
+        client: Client,
+        products_table: str,
+        analyses_table: str,
+        mappings_table: str,
+        stocks_table: str,
+    ) -> None:
         self._client = client
         self._products_table = products_table
         self._analyses_table = analyses_table
+        self._mappings_table = mappings_table
+        self._stocks_table = stocks_table
 
     @classmethod
     def from_settings(cls, settings: Settings) -> SupabaseSupplierProductRepository:
@@ -63,6 +91,8 @@ class SupabaseSupplierProductRepository:
             client,
             settings.supabase_supplier_products_table,
             settings.supabase_product_analyses_table,
+            settings.supabase_wb_card_mappings_table,
+            settings.supabase_wb_stock_snapshots_table,
         )
 
     async def upsert_products(self, products: list[SupplierProductInput]) -> int:
@@ -78,6 +108,11 @@ class SupabaseSupplierProductRepository:
                 "wholesale_price": str(product.wholesale_price) if product.wholesale_price is not None else None,
                 "retail_price": str(product.retail_price) if product.retail_price is not None else None,
                 "stock": product.stock,
+                "pack_units": product.pack_units,
+                "weight_grams": str(product.weight_grams) if product.weight_grams is not None else None,
+                "dimensions": product.dimensions,
+                "description": product.description,
+                "order_quantity": product.order_quantity,
                 "photo_urls": [str(url) for url in product.photo_urls],
                 "source_url": str(product.source_url) if product.source_url else None,
                 "raw": product.raw,
@@ -93,6 +128,68 @@ class SupabaseSupplierProductRepository:
         except Exception as exc:
             raise _repository_error(exc) from exc
         return len(products)
+
+    async def upsert_mappings(self, mappings: list[WBCardMappingInput]) -> int:
+        if not mappings:
+            return 0
+        payloads = [
+            {
+                "mapping_key": _mapping_key(mapping),
+                "supplier": mapping.supplier,
+                "manufacturer_article": mapping.manufacturer_article,
+                "seller_article": mapping.seller_article,
+                "wb_article": mapping.wb_article,
+                "barcode": mapping.barcode,
+                "brand": mapping.brand,
+                "subject": mapping.subject,
+                "name": mapping.name,
+                "purchase_price": str(mapping.purchase_price) if mapping.purchase_price is not None else None,
+                "retail_price": str(mapping.retail_price) if mapping.retail_price is not None else None,
+                "pack_units": mapping.pack_units,
+                "raw": mapping.raw,
+            }
+            for mapping in mappings
+        ]
+        try:
+            await asyncio.to_thread(
+                lambda: self._client.table(self._mappings_table)
+                .upsert(payloads, on_conflict="mapping_key")
+                .execute()
+            )
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return len(mappings)
+
+    async def upsert_stocks(self, stocks: list[WBStockSnapshotInput]) -> int:
+        if not stocks:
+            return 0
+        payloads = [
+            {
+                "wb_article": stock.wb_article,
+                "seller_article": stock.seller_article,
+                "brand": stock.brand,
+                "subject": stock.subject,
+                "stock_qty": stock.stock_qty,
+                "in_way_to_client": stock.in_way_to_client,
+                "in_way_from_client": stock.in_way_from_client,
+                "raw": stock.raw,
+            }
+            for stock in stocks
+        ]
+        try:
+            await asyncio.to_thread(lambda: self._client.table(self._stocks_table).insert(payloads).execute())
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return len(stocks)
+
+    async def refresh_product_statuses(self, supplier: str) -> None:
+        def refresh() -> None:
+            self._client.rpc("refresh_supplier_product_statuses", {"supplier_arg": supplier}).execute()
+
+        try:
+            await asyncio.to_thread(refresh)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
 
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
         def select() -> tuple[list[dict], int]:
@@ -153,6 +250,11 @@ def _product_from_row(row: dict) -> SupplierProduct:
         wholesale_price=row.get("wholesale_price"),
         retail_price=row.get("retail_price"),
         stock=row.get("stock"),
+        pack_units=row.get("pack_units"),
+        weight_grams=row.get("weight_grams"),
+        dimensions=row.get("dimensions"),
+        description=row.get("description"),
+        order_quantity=row.get("order_quantity"),
         photo_urls=row.get("photo_urls") or [],
         source_url=row.get("source_url"),
         status=row.get("status") or "new",
@@ -160,3 +262,14 @@ def _product_from_row(row: dict) -> SupplierProduct:
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )
+
+
+def _mapping_key(mapping: WBCardMappingInput) -> str:
+    values = [
+        mapping.supplier,
+        mapping.manufacturer_article,
+        mapping.seller_article,
+        mapping.wb_article,
+        mapping.barcode,
+    ]
+    return ":".join((value or "").strip().lower() for value in values)
