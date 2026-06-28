@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -98,7 +99,19 @@ def _parse_stocks(workbook: Any) -> list[WBStockSnapshotInput]:
 
 
 def _row(headers: list[str], row: tuple[Any, ...]) -> dict[str, Any]:
-    return {headers[index]: value for index, value in enumerate(row) if index < len(headers) and headers[index]}
+    return {
+        headers[index]: _json_value(value)
+        for index, value in enumerate(row)
+        if index < len(headers) and headers[index]
+    }
+
+
+def _json_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 
 def _text(value: Any) -> str | None:
