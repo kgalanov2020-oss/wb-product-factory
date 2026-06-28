@@ -160,15 +160,17 @@ function App() {
     setLoading(true);
     setMessage("");
     try {
-      const [health, stats, productList] = await Promise.all([
+      const [health, stats, productList, contentJobs] = await Promise.all([
         request<Integrations>("/api/v1/integrations/health"),
         request<ProductStatsResponse>("/api/v1/supplier-products/stats"),
         request<ProductListResponse>("/api/v1/supplier-products?limit=100"),
+        request<ContentJob[]>("/api/v1/product-content/jobs?limit=20"),
       ]);
       setIntegrations(health);
       setProductStats(stats);
       setProducts(productList.products);
       setTotal(productList.total);
+      setJobs(contentJobs);
       setSelected((current) => {
         if (!current) {
           return productList.products[0] ?? null;

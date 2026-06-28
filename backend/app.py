@@ -291,6 +291,21 @@ async def generate_supplier_product_content(
 
 
 @app.get(
+    "/api/v1/product-content/jobs",
+    response_model=list[ProductContentStoredJob],
+    tags=["product-content"],
+)
+async def list_product_content_jobs(
+    request: Request,
+    limit: int = 20,
+) -> list[ProductContentStoredJob]:
+    try:
+        return await get_product_content_service(request).list_jobs(limit=min(max(limit, 1), 100))
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.get(
     "/api/v1/product-content/jobs/{job_id}",
     response_model=ProductContentStoredJob,
     tags=["product-content"],

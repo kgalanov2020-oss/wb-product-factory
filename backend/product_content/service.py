@@ -95,6 +95,9 @@ class ProductContentService:
     async def get_job(self, job_id: UUID) -> ProductContentStoredJob | None:
         return await self._repository.get_job(job_id)
 
+    async def list_jobs(self, limit: int = 20) -> list[ProductContentStoredJob]:
+        return await self._repository.list_jobs(limit)
+
     async def sync_job(self, job_id: UUID) -> ProductContentStoredJob | None:
         if self._aidentika_client is None:
             raise AidentikaConfigurationError("Aidentika is not configured")

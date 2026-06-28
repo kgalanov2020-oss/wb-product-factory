@@ -33,6 +33,8 @@ class ProductContentRepository(Protocol):
 
     async def get_job(self, job_id: UUID) -> ProductContentStoredJob | None: ...
 
+    async def list_jobs(self, limit: int = 20) -> list[ProductContentStoredJob]: ...
+
     async def update_action(self, job_id: UUID, action: ProductContentAction) -> None: ...
 
     async def update_job_status(self, job_id: UUID, status: ProductContentJobStatus) -> None: ...
@@ -44,6 +46,9 @@ class NullProductContentRepository:
 
     async def get_job(self, job_id: UUID) -> ProductContentStoredJob | None:
         return None
+
+    async def list_jobs(self, limit: int = 20) -> list[ProductContentStoredJob]:
+        return []
 
     async def update_action(self, job_id: UUID, action: ProductContentAction) -> None:
         return None
@@ -150,6 +155,59 @@ class SupabaseProductContentRepository:
             created_at=job_data.get("created_at"),
             updated_at=job_data.get("updated_at"),
         )
+
+    async def list_jobs(self, limit: int = 20) -> list[ProductContentStoredJob]:
+        def select() -> tuple[list[dict], list[dict]]:
+            jobs_response = (
+                self._client.table(self._jobs_table)
+                .select("*")
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            jobs_data = jobs_response.data if jobs_response is not None else []
+            job_ids = [job["id"] for job in jobs_data or []]
+            if not job_ids:
+                return [], []
+            actions_response = (
+                self._client.table(self._actions_table)
+                .select("*")
+                .in_("job_id", job_ids)
+                .order("created_at")
+                .execute()
+            )
+            actions_data = actions_response.data if actions_response is not None else []
+            return jobs_data or [], actions_data or []
+
+        try:
+            jobs_data, actions_data = await asyncio.to_thread(select)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        actions_by_job: dict[str, list[dict]] = {}
+        for action in actions_data:
+            actions_by_job.setdefault(action["job_id"], []).append(action)
+        return [
+            ProductContentStoredJob(
+                job_id=job["id"],
+                status=job["status"],
+                product_name=job["product_name"],
+                request_payload=job.get("request_payload") or {},
+                actions=[
+                    ProductContentAction(
+                        asset_type=action["asset_type"],
+                        action_id=action["aidentika_action_id"],
+                        status=action["status"],
+                        poll_url=action.get("poll_url"),
+                        result_url=action.get("result_url"),
+                        error_message=action.get("error_message"),
+                    )
+                    for action in actions_by_job.get(job["id"], [])
+                ],
+                created_at=job.get("created_at"),
+                updated_at=job.get("updated_at"),
+            )
+            for job in jobs_data
+        ]
 
     async def update_action(self, job_id: UUID, action: ProductContentAction) -> None:
         payload = {
