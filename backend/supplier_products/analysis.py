@@ -29,6 +29,12 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
     margin = _margin(product.wholesale_price, market_avg)
     score = _launch_score(margin, competitor_count, estimated_sales)
 
+    source_note = (
+        "Базовая оценка по публичной выдаче WB. Нужна проверка MPStats для финального решения."
+        if _is_wb_public_snapshot(snapshot)
+        else "Авторасчет по текущему снимку MPStats. Требует проверки после нормализации данных."
+    )
+
     return ProductAnalysis(
         product_id=product.id,
         status="completed",
@@ -40,7 +46,7 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
         estimated_revenue=estimated_revenue,
         margin_percent=margin,
         launch_score=score,
-        notes="Авторасчет по текущему снимку MPStats. Требует проверки после нормализации данных.",
+        notes=source_note,
         raw={"mpstats_snapshot": snapshot.model_dump(mode="json")},
     )
 
@@ -52,6 +58,12 @@ def _competitor_count(snapshot: MPStatsSnapshot) -> int:
             return len(first)
         return len(snapshot.competitors)
     return 0
+
+
+def _is_wb_public_snapshot(snapshot: MPStatsSnapshot) -> bool:
+    if not snapshot.raw_payloads:
+        return False
+    return any("search.wb.ru" in str(payload.get("url", "")) for payload in snapshot.raw_payloads)
 
 
 def _numbers_by_keys(data: Any, keys: tuple[str, ...]) -> list[Decimal]:

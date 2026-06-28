@@ -120,6 +120,8 @@ class SupplierProductService:
             snapshot = (await self._mpstats_service.collect(CollectionRequest(query=product.name))).collection
         except MPStatsCollectorError:
             snapshot = await collect_wb_public_snapshot(product.name)
+        if not snapshot.competitors:
+            snapshot = await collect_wb_public_snapshot(product.name)
         analysis = build_market_analysis(product, snapshot)
         await self._repository.save_analysis(analysis)
         return analysis
