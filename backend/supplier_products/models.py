@@ -92,6 +92,14 @@ class ProductListResponse(BaseModel):
     total: int
 
 
+class ProductStatsResponse(BaseModel):
+    total: int
+    missing_on_wb: int
+    listed: int
+    analyzed: int
+    content_ready: int
+
+
 class WBCardMappingInput(BaseModel):
     supplier: str = "zvezda"
     manufacturer_article: str | None = None

@@ -5,6 +5,7 @@ from uuid import UUID
 import httpx
 
 from backend.mpstats_collector.models import CollectionRequest
+from backend.mpstats_collector.exceptions import MPStatsCollectorError
 from backend.mpstats_collector.service import MPStatsCollectorService
 
 from .analysis import build_market_analysis
@@ -13,12 +14,14 @@ from .models import (
     PriceListImportResult,
     ProductAnalysis,
     ProductListResponse,
+    ProductStatsResponse,
     SupplierProduct,
     WorkbookImportResult,
 )
 from .parser import parse_price_list
 from .repository import SupplierProductRepository
 from .workbook import parse_zvezda_workbook
+from .wb_public import collect_wb_public_snapshot
 
 
 class SupplierProductService:
@@ -101,6 +104,9 @@ class SupplierProductService:
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
         return await self._repository.list_products(limit=limit, offset=offset, status=status)
 
+    async def product_stats(self) -> ProductStatsResponse:
+        return ProductStatsResponse(**await self._repository.product_stats())
+
     async def get_product(self, product_id: UUID) -> SupplierProduct | None:
         return await self._repository.get_product(product_id)
 
@@ -110,7 +116,10 @@ class SupplierProductService:
         product = await self._repository.get_product(product_id)
         if product is None:
             return None
-        snapshot = (await self._mpstats_service.collect(CollectionRequest(query=product.name))).collection
+        try:
+            snapshot = (await self._mpstats_service.collect(CollectionRequest(query=product.name))).collection
+        except MPStatsCollectorError:
+            snapshot = await collect_wb_public_snapshot(product.name)
         analysis = build_market_analysis(product, snapshot)
         await self._repository.save_analysis(analysis)
         return analysis

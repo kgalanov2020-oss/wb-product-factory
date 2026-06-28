@@ -34,6 +34,7 @@ class SupplierProductRepository(Protocol):
     async def upsert_mappings(self, mappings: list[WBCardMappingInput]) -> int: ...
     async def upsert_stocks(self, stocks: list[WBStockSnapshotInput]) -> int: ...
     async def refresh_product_statuses(self, supplier: str) -> None: ...
+    async def product_stats(self) -> dict[str, int]: ...
 
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse: ...
 
@@ -54,6 +55,9 @@ class NullSupplierProductRepository:
 
     async def refresh_product_statuses(self, supplier: str) -> None:
         return None
+
+    async def product_stats(self) -> dict[str, int]:
+        return {"total": 0, "missing_on_wb": 0, "listed": 0, "analyzed": 0, "content_ready": 0}
 
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
         return ProductListResponse(products=[], total=0)
@@ -188,6 +192,26 @@ class SupabaseSupplierProductRepository:
 
         try:
             await asyncio.to_thread(refresh)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+
+    async def product_stats(self) -> dict[str, int]:
+        statuses = ("missing_on_wb", "listed", "analyzed", "content_ready")
+
+        def count(status: str | None = None) -> int:
+            query = self._client.table(self._products_table).select("id", count="exact")
+            if status:
+                query = query.eq("status", status)
+            response = query.limit(1).execute()
+            return response.count or 0
+
+        try:
+            return await asyncio.to_thread(
+                lambda: {
+                    "total": count(),
+                    **{status: count(status) for status in statuses},
+                }
+            )
         except Exception as exc:
             raise _repository_error(exc) from exc
 

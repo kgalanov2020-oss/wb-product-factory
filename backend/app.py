@@ -43,6 +43,7 @@ from backend.supplier_products.models import (
     PriceListImportResult,
     ProductAnalysis,
     ProductListResponse,
+    ProductStatsResponse,
     SupplierProduct,
 )
 from backend.supplier_products.repository import (
@@ -311,6 +312,18 @@ async def import_supplier_products_from_file(
         )
     except SupplierPriceListError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/supplier-products/stats",
+    response_model=ProductStatsResponse,
+    tags=["supplier-products"],
+)
+async def supplier_product_stats(request: Request) -> ProductStatsResponse:
+    try:
+        return await get_supplier_product_service(request).product_stats()
     except SupplierProductRepositoryError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 

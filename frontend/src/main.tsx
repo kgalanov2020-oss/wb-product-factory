@@ -49,6 +49,14 @@ type ProductListResponse = {
   total: number;
 };
 
+type ProductStatsResponse = {
+  total: number;
+  missing_on_wb: number;
+  listed: number;
+  analyzed: number;
+  content_ready: number;
+};
+
 type ContentJob = {
   job_id: string;
   status: string;
@@ -66,6 +74,7 @@ function App() {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
+  const [productStats, setProductStats] = useState<ProductStatsResponse | null>(null);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<SupplierProduct | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -78,12 +87,12 @@ function App() {
     const ready = jobs.filter((job) => job.status === "completed").length;
     const running = jobs.filter((job) => ["queued", "running"].includes(job.status)).length;
     return {
-      products: total,
+      products: productStats?.total ?? total,
       contentReady: ready,
       contentRunning: running,
-      missing: products.filter((product) => product.status === "missing_on_wb").length,
+      missing: productStats?.missing_on_wb ?? products.filter((product) => product.status === "missing_on_wb").length,
     };
-  }, [jobs, products, total]);
+  }, [jobs, productStats, products, total]);
 
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${apiUrl}${path}`, options);
@@ -98,11 +107,13 @@ function App() {
     setLoading(true);
     setMessage("");
     try {
-      const [health, productList] = await Promise.all([
+      const [health, stats, productList] = await Promise.all([
         request<Integrations>("/api/v1/integrations/health"),
+        request<ProductStatsResponse>("/api/v1/supplier-products/stats"),
         request<ProductListResponse>("/api/v1/supplier-products?limit=100"),
       ]);
       setIntegrations(health);
+      setProductStats(stats);
       setProducts(productList.products);
       setTotal(productList.total);
       if (!selected && productList.products.length) {
