@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any
 from pathlib import Path
+import re
+from typing import Any
 from urllib.parse import urlparse
 
-from playwright.async_api import Response, async_playwright
+from playwright.async_api import Locator, Page, Response, async_playwright
 
 from backend.config import Settings
 
@@ -20,6 +21,7 @@ class PlaywrightMPStatsCollector:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._allowed_host = (urlparse(str(settings.mpstats_base_url)).hostname or "").lower()
+
     async def collect(self, request: CollectionRequest) -> MPStatsSnapshot:
         api_payloads: list[dict[str, Any]] = []
         grid_rows: list[dict[str, str]] = []
@@ -55,17 +57,9 @@ class PlaywrightMPStatsCollector:
                     str(self._settings.mpstats_search_url),
                     wait_until="domcontentloaded",
                 )
-                search_button = page.get_by_role(
-                    "button",
-                    name="Искать",
-                    exact=True,
-                )
-                query_label = page.get_by_text("Запрос", exact=True)
-                if await query_label.count() != 1:
-                    raise MPStatsCollectorError("MPStats query field label is not unique")
-                search_input = query_label.locator("xpath=following::input[1]")
-                await search_input.fill(request.query)
                 page.on("response", capture_json)
+                search_input = await self._fill_product_query(page, request.query)
+                search_button = await self._find_search_button(page, search_input)
                 await search_button.click()
                 try:
                     await asyncio.wait_for(
@@ -94,7 +88,7 @@ class PlaywrightMPStatsCollector:
             raw_payloads=api_payloads,
         )
 
-    async def _login(self, page: Any, storage_path: Path) -> None:
+    async def _login(self, page: Page, storage_path: Path) -> None:
         if not self._settings.mpstats_login_configured:
             raise MPStatsConfigurationError(
                 f"MPStats login settings are required because {storage_path} does not exist"
@@ -118,11 +112,89 @@ class PlaywrightMPStatsCollector:
         await page.wait_for_url(lambda url: "/login" not in url)
 
     @staticmethod
-    def _extract(payloads: list[dict[str, Any]], marker: str) -> list[Any]:
-        return [item["data"] for item in payloads if marker in item["url"].lower()]
+    async def _fill_product_query(page: Page, query: str) -> Locator:
+        candidates = [
+            page.locator(
+                "xpath=(//*[self::main or @role='main']"
+                "//*[normalize-space()='Запрос']"
+                "/following::input[not(@type='hidden') and not(ancestor::aside) and not(ancestor::nav)][1])[1]"
+            ),
+            page.locator(
+                "xpath=(//*[normalize-space()='Запрос']"
+                "/following::input[not(@type='hidden') and not(ancestor::aside) and not(ancestor::nav)][1])[1]"
+            ),
+            page.locator(
+                "main input:visible:not([type='hidden']), "
+                "[role='main'] input:visible:not([type='hidden'])"
+            ).first,
+        ]
+        for candidate in candidates:
+            if await candidate.count() == 0:
+                continue
+            try:
+                await candidate.fill(query)
+                return candidate
+            except Exception:
+                continue
+        raise MPStatsCollectorError("MPStats product query input was not found")
 
     @staticmethod
-    async def _extract_visible_grid(page: Any) -> list[dict[str, str]]:
+    async def _find_search_button(page: Page, search_input: Locator) -> Locator:
+        button_name = re.compile(r"^\s*Искать\s*$", re.IGNORECASE)
+        candidates = [
+            search_input.locator("xpath=ancestor::form[1]").get_by_role(
+                "button",
+                name=button_name,
+            ),
+            search_input.locator("xpath=ancestor::*[contains(@class, 'filter')][1]").get_by_role(
+                "button",
+                name=button_name,
+            ),
+            page.locator("main, [role='main']").get_by_role("button", name=button_name),
+            page.get_by_role("button", name=button_name),
+        ]
+        for candidate in candidates:
+            if await candidate.count() == 0:
+                continue
+            button = candidate.first
+            try:
+                await button.wait_for(state="visible", timeout=2_000)
+                return button
+            except Exception:
+                continue
+        raise MPStatsCollectorError("MPStats search button was not found")
+
+    @staticmethod
+    def _extract(payloads: list[dict[str, Any]], marker: str) -> list[Any]:
+        extracted: list[Any] = []
+        for item in payloads:
+            url = item["url"].lower()
+            data = item["data"]
+            if marker in url:
+                extracted.append(data)
+                continue
+            nested = PlaywrightMPStatsCollector._extract_by_marker(data, marker)
+            if nested:
+                extracted.extend(nested)
+        return extracted
+
+    @staticmethod
+    def _extract_by_marker(data: Any, marker: str) -> list[Any]:
+        found: list[Any] = []
+        marker = marker.lower()
+        if isinstance(data, dict):
+            for key, value in data.items():
+                key_lower = str(key).lower()
+                if marker in key_lower:
+                    found.append(value)
+                found.extend(PlaywrightMPStatsCollector._extract_by_marker(value, marker))
+        elif isinstance(data, list):
+            for value in data:
+                found.extend(PlaywrightMPStatsCollector._extract_by_marker(value, marker))
+        return found
+
+    @staticmethod
+    async def _extract_visible_grid(page: Page) -> list[dict[str, str]]:
         for row_selector in ('[role="row"]:visible', "tbody tr:visible", ".ag-row:visible"):
             rows = page.locator(row_selector)
             extracted: list[dict[str, str]] = []

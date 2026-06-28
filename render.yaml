@@ -18,6 +18,10 @@ services:
         sync: false
       - key: SUPABASE_MPSTATS_TABLE
         value: mpstats_collections
+      - key: SUPABASE_PRODUCT_CONTENT_JOBS_TABLE
+        value: product_content_jobs
+      - key: SUPABASE_PRODUCT_CONTENT_ACTIONS_TABLE
+        value: product_content_actions
       - key: MPSTATS_BASE_URL
         value: https://mpstats.io
       - key: MPSTATS_LOGIN_URL
@@ -33,4 +37,8 @@ services:
       - key: MPSTATS_EMAIL
         sync: false
       - key: MPSTATS_PASSWORD
+        sync: false
+      - key: AIDENTIKA_BASE_URL
+        value: https://api.aidentika.com/api/v1/public
+      - key: AIDENTIKA_API_KEY
         sync: false

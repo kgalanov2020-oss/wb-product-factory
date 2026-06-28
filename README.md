@@ -176,3 +176,130 @@ Telegram бот:
 5. Запись в Supabase
 
 После успешного MVP перейти к генерации карточек.
+
+---
+
+## Реализованные API endpoints
+
+### System
+
+* `GET /health` - проверка доступности API.
+* `GET /api/v1/integrations/health` - проверка, настроены ли Supabase, MPStats и Aidentika.
+
+### MPStats
+
+* `POST /api/v1/mpstats/collect`
+
+Пример:
+
+```json
+{
+  "query": "клей звезда"
+}
+```
+
+Endpoint запускает браузерный сбор MPStats, сохраняет результат в Supabase при наличии настроек и возвращает снимок данных.
+
+### Aidentika
+
+* `POST /api/v1/aidentika/analyze` - анализ изображения.
+* `POST /api/v1/aidentika/generate/photo` - запуск генерации товарного фото.
+* `POST /api/v1/aidentika/generate/card` - запуск генерации карточки/инфографики.
+* `GET /api/v1/aidentika/status/{action_id}` - проверка статуса асинхронной генерации.
+
+Пример генерации карточки:
+
+```json
+{
+  "images": [
+    {
+      "url": "https://example.com/product.jpg"
+    }
+  ],
+  "product_name": "Клей Звезда",
+  "user_text": "Инфографика для карточки Wildberries: назначение, преимущества, объем, способ применения",
+  "concept_id": "infographic",
+  "aspect_ratio": "3:4",
+  "style": "classic"
+}
+```
+
+### Product Content
+
+* `POST /api/v1/product-content/generate` - WB-оркестратор генерации контента по товару.
+* `GET /api/v1/product-content/jobs/{job_id}` - получить сохраненную задачу и ее Aidentika actions.
+* `POST /api/v1/product-content/jobs/{job_id}/sync` - обновить статусы actions из Aidentika и пересчитать статус job.
+
+Endpoint принимает товар, фото и список нужных материалов, затем запускает несколько задач Aidentika и возвращает `job_id` и `action_id` по каждому материалу.
+
+Пример:
+
+```json
+{
+  "product_name": "Клей Звезда",
+  "brand": "Звезда",
+  "images": [
+    {
+      "url": "https://example.com/product.jpg"
+    }
+  ],
+  "assets": ["main_photo", "infographic", "advantages", "usage"],
+  "facts": [
+    "для сборных моделей",
+    "подходит для пластика",
+    "точное нанесение"
+  ],
+  "target_audience": "покупатели сборных моделей и товаров для хобби"
+}
+```
+
+Жизненный цикл:
+
+1. `POST /api/v1/product-content/generate`
+2. сохранить `job_id` из ответа
+3. периодически вызывать `POST /api/v1/product-content/jobs/{job_id}/sync`
+4. читать результат через `GET /api/v1/product-content/jobs/{job_id}`
+
+---
+
+## Переменные окружения
+
+Минимум для MPStats:
+
+```env
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_MPSTATS_TABLE=mpstats_collections
+MPSTATS_EMAIL=
+MPSTATS_PASSWORD=
+```
+
+Минимум для Aidentika:
+
+```env
+AIDENTIKA_BASE_URL=https://api.aidentika.com/api/v1/public
+AIDENTIKA_API_KEY=
+```
+
+---
+
+## Ближайший план
+
+1. Стабилизировать извлечение полезных данных из MPStats: `competitors`, `sales`, `prices`, `revenue`.
+2. Добавить нормализацию MPStats-ответов в отдельные таблицы.
+3. Добавить `product_candidates` и расчет `launch_score`.
+4. Связать выбранного кандидата с Aidentika: товарные фото и инфографика.
+5. Сохранять готовые изображения Aidentika в Supabase Storage или Google Drive.
+6. Добавить связь `product_candidates -> product_content_jobs`.
+
+---
+
+## Supabase schema
+
+SQL-схема лежит в `supabase/schema.sql`.
+
+Она создает:
+
+* `mpstats_collections`
+* `product_content_jobs`
+* `product_content_actions`

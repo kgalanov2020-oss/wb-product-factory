@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     supabase_url: HttpUrl | None = None
     supabase_service_role_key: SecretStr | None = None
     supabase_mpstats_table: str = "mpstats_collections"
+    supabase_product_content_jobs_table: str = "product_content_jobs"
+    supabase_product_content_actions_table: str = "product_content_actions"
 
     mpstats_base_url: HttpUrl = HttpUrl("https://mpstats.io")
     mpstats_login_url: HttpUrl = HttpUrl("https://mpstats.io/login")
@@ -34,6 +36,9 @@ class Settings(BaseSettings):
     mpstats_email: str | None = None
     mpstats_password: SecretStr | None = None
 
+    aidentika_base_url: HttpUrl = HttpUrl("https://api.aidentika.com/api/v1/public")
+    aidentika_api_key: SecretStr | None = None
+
     @property
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
@@ -41,6 +46,10 @@ class Settings(BaseSettings):
     @property
     def mpstats_login_configured(self) -> bool:
         return bool(self.mpstats_email and self.mpstats_password)
+
+    @property
+    def aidentika_configured(self) -> bool:
+        return bool(self.aidentika_api_key)
 
 
 @lru_cache
