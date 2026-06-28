@@ -13,18 +13,24 @@ from .models import ProductAnalysis, SupplierProduct
 PRICE_KEYS = ("price", "цена", "стоимость")
 SALES_KEYS = ("sales", "sale", "продаж", "выкуп")
 REVENUE_KEYS = ("revenue", "выруч", "оборот")
+MAX_ESTIMATED_SALES = 2_000_000_000
 
 
 def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -> ProductAnalysis:
-    prices = _numbers_by_keys(snapshot.model_dump(mode="json"), PRICE_KEYS)
-    sales = _numbers_by_keys(snapshot.model_dump(mode="json"), SALES_KEYS)
-    revenue = _numbers_by_keys(snapshot.model_dump(mode="json"), REVENUE_KEYS)
+    analysis_data = snapshot.competitors or {
+        "prices": snapshot.prices,
+        "sales": snapshot.sales,
+        "revenue": snapshot.revenue,
+    }
+    prices = _numbers_by_keys(analysis_data, PRICE_KEYS)
+    sales = _numbers_by_keys(analysis_data, SALES_KEYS)
+    revenue = _numbers_by_keys(analysis_data, REVENUE_KEYS)
     competitor_count = _competitor_count(snapshot)
 
     market_min = min(prices) if prices else None
     market_avg = sum(prices) / Decimal(len(prices)) if prices else None
     market_max = max(prices) if prices else None
-    estimated_sales = int(sum(sales)) if sales else None
+    estimated_sales = min(int(sum(sales)), MAX_ESTIMATED_SALES) if sales else None
     estimated_revenue = sum(revenue) if revenue else None
     margin = _margin(product.wholesale_price, market_avg)
     score = _launch_score(margin, competitor_count, estimated_sales)
