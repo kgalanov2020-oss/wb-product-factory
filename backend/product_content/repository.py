@@ -18,6 +18,16 @@ from .models import (
 )
 
 
+def _repository_error(exc: Exception) -> ProductContentRepositoryError:
+    message = str(exc).replace("\n", " ").strip()
+    if len(message) > 500:
+        message = f"{message[:500]}..."
+    return ProductContentRepositoryError(
+        "Product content tables are unavailable. Apply supabase/schema.sql. "
+        f"Supabase error: {message}"
+    )
+
+
 class ProductContentRepository(Protocol):
     async def save_job(self, request: ProductContentRequest, job: ProductContentJob) -> bool: ...
 
@@ -89,9 +99,7 @@ class SupabaseProductContentRepository:
         try:
             await asyncio.to_thread(insert)
         except Exception as exc:
-            raise ProductContentRepositoryError(
-                "Product content tables are unavailable. Apply supabase/schema.sql."
-            ) from exc
+            raise _repository_error(exc) from exc
         return True
 
     async def get_job(self, job_id: UUID) -> ProductContentStoredJob | None:
@@ -118,9 +126,7 @@ class SupabaseProductContentRepository:
         try:
             job_data, actions_data = await asyncio.to_thread(select)
         except Exception as exc:
-            raise ProductContentRepositoryError(
-                "Product content tables are unavailable. Apply supabase/schema.sql."
-            ) from exc
+            raise _repository_error(exc) from exc
         if not job_data:
             return None
         actions = [
@@ -160,9 +166,7 @@ class SupabaseProductContentRepository:
                 .execute()
             )
         except Exception as exc:
-            raise ProductContentRepositoryError(
-                "Product content tables are unavailable. Apply supabase/schema.sql."
-            ) from exc
+            raise _repository_error(exc) from exc
 
     async def update_job_status(self, job_id: UUID, status: ProductContentJobStatus) -> None:
         try:
@@ -173,6 +177,4 @@ class SupabaseProductContentRepository:
                 .execute()
             )
         except Exception as exc:
-            raise ProductContentRepositoryError(
-                "Product content tables are unavailable. Apply supabase/schema.sql."
-            ) from exc
+            raise _repository_error(exc) from exc
