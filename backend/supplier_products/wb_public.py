@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+import asyncio
 
 from backend.mpstats_collector.models import MPStatsSnapshot
 
@@ -23,8 +24,18 @@ async def collect_wb_public_snapshot(query: str) -> MPStatsSnapshot:
         "suppressSpellcheck": "false",
     }
     url = "https://search.wb.ru/exactmatch/ru/common/v9/search"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 WB Product Factory/1.0",
+    }
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        response = await client.get(url, params=params)
+        response: httpx.Response | None = None
+        for attempt in range(3):
+            response = await client.get(url, params=params, headers=headers)
+            if response.status_code != 429:
+                break
+            await asyncio.sleep(2 * (attempt + 1))
+    assert response is not None
     response.raise_for_status()
     payload = response.json()
     products = payload.get("data", {}).get("products", [])

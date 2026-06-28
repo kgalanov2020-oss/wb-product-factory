@@ -119,9 +119,19 @@ class SupplierProductService:
         try:
             snapshot = (await self._mpstats_service.collect(CollectionRequest(query=product.name))).collection
         except MPStatsCollectorError:
-            snapshot = await collect_wb_public_snapshot(product.name)
-        if not snapshot.competitors:
-            snapshot = await collect_wb_public_snapshot(product.name)
+            snapshot = None
+        if snapshot is None or not snapshot.competitors:
+            try:
+                snapshot = await collect_wb_public_snapshot(product.name)
+            except httpx.HTTPError as exc:
+                analysis = ProductAnalysis(
+                    product_id=product.id,
+                    status="failed",
+                    notes=f"WB public search is temporarily unavailable: {exc.response.status_code if hasattr(exc, 'response') and exc.response else exc}",
+                    raw={"error": str(exc)},
+                )
+                await self._repository.save_analysis(analysis)
+                return analysis
         analysis = build_market_analysis(product, snapshot)
         await self._repository.save_analysis(analysis)
         return analysis
