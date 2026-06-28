@@ -111,3 +111,12 @@ async def test_sync_product_content_job_updates_actions_and_job_status():
     assert synced.status == "running"
     assert synced.actions[0].status == "completed"
     assert synced.actions[0].result_url == "https://example.com/101.png"
+
+
+@pytest.mark.asyncio
+async def test_get_missing_product_content_job_returns_none():
+    service = ProductContentService(FakeAidentikaClient(), FakeRepository())
+
+    job = await service.get_job(UUID("00000000-0000-0000-0000-000000000000"))
+
+    assert job is None

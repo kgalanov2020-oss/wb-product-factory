@@ -111,7 +111,7 @@ class SupabaseProductContentRepository:
                 .maybe_single()
                 .execute()
             )
-            job_data = job_response.data
+            job_data = job_response.data if job_response is not None else None
             if not job_data:
                 return None, []
             actions_response = (
@@ -121,7 +121,8 @@ class SupabaseProductContentRepository:
                 .order("created_at")
                 .execute()
             )
-            return job_data, actions_response.data or []
+            actions_data = actions_response.data if actions_response is not None else []
+            return job_data, actions_data or []
 
         try:
             job_data, actions_data = await asyncio.to_thread(select)
