@@ -310,7 +310,7 @@ class SupabaseSupplierProductRepository:
                 .eq("status", "analyzed")
                 .gte("launch_score", min_score)
                 .order("launch_score", desc=True)
-                .limit(limit)
+                .limit(max(limit * 5, 20))
                 .execute()
             )
             return response.data or []
@@ -319,7 +319,14 @@ class SupabaseSupplierProductRepository:
             rows = await asyncio.to_thread(select)
         except Exception as exc:
             raise _repository_error(exc) from exc
-        return [_product_from_row(row) for row in rows]
+        products = [_product_from_row(row) for row in rows]
+        return [
+            product
+            for product in products
+            if product.sku
+            and len(product.name.strip()) > 5
+            and (product.source_url or product.photo_urls)
+        ][:limit]
 
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
         try:
