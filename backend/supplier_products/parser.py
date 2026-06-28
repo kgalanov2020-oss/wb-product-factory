@@ -40,17 +40,55 @@ def parse_csv_price_list(content: bytes, supplier: str) -> list[SupplierProductI
 
 
 def parse_xlsx_price_list(content: bytes, supplier: str) -> list[SupplierProductInput]:
-    workbook = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
-    sheet = workbook.active
-    rows = list(sheet.iter_rows(values_only=True))
+    workbook = load_workbook(io.BytesIO(content), data_only=True, read_only=False)
+    sheet = _select_sheet(workbook)
+    rows = list(sheet.iter_rows())
     if not rows:
         return []
-    headers = [str(value or "").strip() for value in rows[0]]
-    dict_rows = [
-        {headers[index]: value for index, value in enumerate(row) if index < len(headers)}
-        for row in rows[1:]
-    ]
+    headers = _headers_for_sheet(sheet.title, rows[0])
+    dict_rows: list[dict[str, Any]] = []
+    for row in rows[1:]:
+        values: dict[str, Any] = {}
+        for index, cell in enumerate(row):
+            if index >= len(headers):
+                continue
+            header = headers[index]
+            value = cell.value
+            if cell.hyperlink and cell.hyperlink.target:
+                value = cell.hyperlink.target
+            values[header] = value
+        dict_rows.append(values)
     return _parse_dict_rows(dict_rows, supplier)
+
+
+def _select_sheet(workbook: Any) -> Any:
+    preferred = ("Прайс Звезда", "Справочник Звезда", "Новинки для запуска")
+    for title in preferred:
+        if title in workbook.sheetnames:
+            return workbook[title]
+    return workbook.active
+
+
+def _headers_for_sheet(title: str, row: Any) -> list[str]:
+    if title == "Прайс Звезда":
+        return [
+            "sku",
+            "name",
+            "size",
+            "source_url",
+            "barcode",
+            "stock",
+            "pack_units",
+            "dimensions",
+            "wholesale_price",
+            "unused_10",
+            "total",
+        ]
+    headers: list[str] = []
+    for index, cell in enumerate(row):
+        value = str(cell.value or "").strip()
+        headers.append(value or f"column_{index + 1}")
+    return headers
 
 
 def _parse_dict_rows(rows: list[dict[str, Any]], supplier: str) -> list[SupplierProductInput]:

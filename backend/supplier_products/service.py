@@ -24,12 +24,14 @@ class SupplierProductService:
         self._mpstats_service = mpstats_service
 
     async def import_from_url(self, url: str, supplier: str) -> PriceListImportResult:
+        url, filename = _normalize_price_list_url(url)
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await client.get(url)
         if response.is_error:
             raise SupplierPriceListError(f"Price list download failed: {response.status_code}")
         content_type = response.headers.get("content-type", "")
-        filename = "price.xlsx" if "spreadsheet" in content_type else "price.csv"
+        if filename is None:
+            filename = "price.xlsx" if "spreadsheet" in content_type else "price.csv"
         products = parse_price_list(response.content, filename, supplier)
         imported = await self._repository.upsert_products(products)
         return PriceListImportResult(
@@ -70,3 +72,16 @@ class SupplierProductService:
         analysis = build_market_analysis(product, snapshot)
         await self._repository.save_analysis(analysis)
         return analysis
+
+
+def _normalize_price_list_url(url: str) -> tuple[str, str | None]:
+    if "docs.google.com/spreadsheets" not in url:
+        return url, None
+    marker = "/d/"
+    if marker not in url:
+        return url, None
+    spreadsheet_id = url.split(marker, 1)[1].split("/", 1)[0]
+    return (
+        f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=xlsx",
+        "price.xlsx",
+    )
