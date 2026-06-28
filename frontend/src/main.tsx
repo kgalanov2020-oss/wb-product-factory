@@ -70,6 +70,11 @@ type ContentJob = {
   }>;
 };
 
+type AnalysisState = {
+  status: "running" | "completed" | "failed";
+  message: string;
+};
+
 function App() {
   const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
@@ -81,6 +86,7 @@ function App() {
   const [sheetUrl, setSheetUrl] = useState("");
   const [message, setMessage] = useState("");
   const [jobs, setJobs] = useState<ContentJob[]>([]);
+  const [analysisState, setAnalysisState] = useState<Record<string, AnalysisState>>({});
   const [loading, setLoading] = useState(false);
 
   const stats = useMemo(() => {
@@ -116,9 +122,12 @@ function App() {
       setProductStats(stats);
       setProducts(productList.products);
       setTotal(productList.total);
-      if (!selected && productList.products.length) {
-        setSelected(productList.products[0]);
-      }
+      setSelected((current) => {
+        if (!current) {
+          return productList.products[0] ?? null;
+        }
+        return productList.products.find((product) => product.id === current.id) ?? current;
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка обновления");
     } finally {
@@ -209,7 +218,12 @@ function App() {
 
   async function analyzeProduct(product: SupplierProduct) {
     setLoading(true);
-    setMessage("");
+    const runningMessage = `Запущен анализ: ${product.name}`;
+    setMessage(runningMessage);
+    setAnalysisState((current) => ({
+      ...current,
+      [product.id]: { status: "running", message: "Анализ идет. Обычно это занимает 30-90 секунд." },
+    }));
     try {
       const analysis = await request<{
         status: string;
@@ -221,15 +235,28 @@ function App() {
         { method: "POST" },
       );
       if (analysis.status === "failed") {
-        setMessage(`Анализ не выполнен: ${analysis.notes ?? "источник данных временно недоступен"}`);
+        const failedMessage = `Анализ не выполнен: ${analysis.notes ?? "источник данных временно недоступен"}`;
+        setMessage(failedMessage);
+        setAnalysisState((current) => ({
+          ...current,
+          [product.id]: { status: "failed", message: failedMessage },
+        }));
       } else {
-        setMessage(
-          `Анализ готов. Score: ${analysis.launch_score ?? "?"}, маржа: ${analysis.margin_percent?.toFixed(1) ?? "?"}%`,
-        );
+        const doneMessage = `Анализ готов. Score: ${analysis.launch_score ?? "?"}, маржа: ${analysis.margin_percent?.toFixed(1) ?? "?"}%`;
+        setMessage(doneMessage);
+        setAnalysisState((current) => ({
+          ...current,
+          [product.id]: { status: "completed", message: doneMessage },
+        }));
       }
       await refresh();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка анализа");
+      const errorMessage = error instanceof Error ? error.message : "Ошибка анализа";
+      setMessage(errorMessage);
+      setAnalysisState((current) => ({
+        ...current,
+        [product.id]: { status: "failed", message: errorMessage },
+      }));
     } finally {
       setLoading(false);
     }
@@ -342,6 +369,14 @@ function App() {
             </div>
             {selected ? (
               <>
+                {(() => {
+                  const currentAnalysis = analysisState[selected.id];
+                  return currentAnalysis ? (
+                    <div className={`analysis-status ${currentAnalysis.status}`}>
+                      {currentAnalysis.message}
+                    </div>
+                  ) : null;
+                })()}
                 <div className="product-card">
                   {selected.photo_urls[0] ? <img src={selected.photo_urls[0]} alt={selected.name} /> : <div className="no-photo">Нет фото</div>}
                   <dl>
@@ -356,7 +391,9 @@ function App() {
                   </dl>
                 </div>
                 <div className="actions">
-                  <button onClick={() => analyzeProduct(selected)} disabled={loading}>MPStats-анализ</button>
+                  <button onClick={() => analyzeProduct(selected)} disabled={loading}>
+                    {analysisState[selected.id]?.status === "running" ? "Анализ идет..." : "MPStats-анализ"}
+                  </button>
                   <button onClick={() => generateContent(selected)} disabled={loading || !selected.photo_urls.length}>
                     Сгенерировать карточку
                   </button>

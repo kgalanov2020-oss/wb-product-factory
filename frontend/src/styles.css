@@ -224,6 +224,29 @@ header p,
   gap: 18px;
 }
 
+.analysis-status {
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: #f8fafc;
+}
+
+.analysis-status.running {
+  border-color: #b9d9ff;
+  background: #eaf4ff;
+}
+
+.analysis-status.completed {
+  border-color: #abefc6;
+  background: #ecfdf3;
+}
+
+.analysis-status.failed {
+  border-color: #fecdca;
+  background: #fef3f2;
+}
+
 .product-card img,
 .no-photo {
   width: 180px;
