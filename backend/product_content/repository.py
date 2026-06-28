@@ -8,6 +8,7 @@ from supabase import Client, create_client
 
 from backend.config import Settings
 
+from .exceptions import ProductContentRepositoryError
 from .models import (
     ProductContentAction,
     ProductContentJob,
@@ -85,7 +86,12 @@ class SupabaseProductContentRepository:
             if action_payloads:
                 self._client.table(self._actions_table).insert(action_payloads).execute()
 
-        await asyncio.to_thread(insert)
+        try:
+            await asyncio.to_thread(insert)
+        except Exception as exc:
+            raise ProductContentRepositoryError(
+                "Product content tables are unavailable. Apply supabase/schema.sql."
+            ) from exc
         return True
 
     async def get_job(self, job_id: UUID) -> ProductContentStoredJob | None:
@@ -109,7 +115,12 @@ class SupabaseProductContentRepository:
             )
             return job_data, actions_response.data or []
 
-        job_data, actions_data = await asyncio.to_thread(select)
+        try:
+            job_data, actions_data = await asyncio.to_thread(select)
+        except Exception as exc:
+            raise ProductContentRepositoryError(
+                "Product content tables are unavailable. Apply supabase/schema.sql."
+            ) from exc
         if not job_data:
             return None
         actions = [
@@ -140,18 +151,28 @@ class SupabaseProductContentRepository:
             "result_url": action.result_url,
             "error_message": action.error_message,
         }
-        await asyncio.to_thread(
-            lambda: self._client.table(self._actions_table)
-            .update(payload)
-            .eq("job_id", str(job_id))
-            .eq("aidentika_action_id", action.action_id)
-            .execute()
-        )
+        try:
+            await asyncio.to_thread(
+                lambda: self._client.table(self._actions_table)
+                .update(payload)
+                .eq("job_id", str(job_id))
+                .eq("aidentika_action_id", action.action_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise ProductContentRepositoryError(
+                "Product content tables are unavailable. Apply supabase/schema.sql."
+            ) from exc
 
     async def update_job_status(self, job_id: UUID, status: ProductContentJobStatus) -> None:
-        await asyncio.to_thread(
-            lambda: self._client.table(self._jobs_table)
-            .update({"status": status})
-            .eq("id", str(job_id))
-            .execute()
-        )
+        try:
+            await asyncio.to_thread(
+                lambda: self._client.table(self._jobs_table)
+                .update({"status": status})
+                .eq("id", str(job_id))
+                .execute()
+            )
+        except Exception as exc:
+            raise ProductContentRepositoryError(
+                "Product content tables are unavailable. Apply supabase/schema.sql."
+            ) from exc

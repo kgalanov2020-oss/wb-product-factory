@@ -27,6 +27,7 @@ from backend.product_content.models import (
     ProductContentRequest,
     ProductContentStoredJob,
 )
+from backend.product_content.exceptions import ProductContentRepositoryError
 from backend.product_content.repository import (
     NullProductContentRepository,
     SupabaseProductContentRepository,
@@ -185,6 +186,8 @@ async def generate_product_content(
         return await service.generate(payload)
     except AidentikaConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except AidentikaError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -198,7 +201,10 @@ async def get_product_content_job(
     job_id: UUID,
     request: Request,
 ) -> ProductContentStoredJob:
-    job = await get_product_content_service(request).get_job(job_id)
+    try:
+        job = await get_product_content_service(request).get_job(job_id)
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return job
@@ -216,6 +222,8 @@ async def sync_product_content_job(
     try:
         job = await get_product_content_service(request).sync_job(job_id)
     except AidentikaConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ProductContentRepositoryError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except AidentikaError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
