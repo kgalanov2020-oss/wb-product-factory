@@ -336,6 +336,12 @@ npm install
 npm run dev
 ```
 
+Локальный адрес интерфейса:
+
+```text
+http://localhost:5180
+```
+
 По умолчанию интерфейс работает с API:
 
 ```text
