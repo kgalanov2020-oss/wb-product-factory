@@ -110,6 +110,9 @@ class SupplierProductService:
     async def get_product(self, product_id: UUID) -> SupplierProduct | None:
         return await self._repository.get_product(product_id)
 
+    async def get_analysis(self, product_id: UUID) -> ProductAnalysis | None:
+        return await self._repository.get_analysis(product_id)
+
     async def analyze_product(self, product_id: UUID) -> ProductAnalysis | None:
         if self._mpstats_service is None:
             raise SupplierPriceListError("MPStats service is not configured")

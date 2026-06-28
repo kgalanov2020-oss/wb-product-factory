@@ -367,6 +367,24 @@ async def get_supplier_product(
     return product
 
 
+@app.get(
+    "/api/v1/supplier-products/{product_id}/analysis",
+    response_model=ProductAnalysis,
+    tags=["supplier-products"],
+)
+async def get_supplier_product_analysis(
+    product_id: UUID,
+    request: Request,
+) -> ProductAnalysis:
+    try:
+        analysis = await get_supplier_product_service(request).get_analysis(product_id)
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    return analysis
+
+
 @app.post(
     "/api/v1/supplier-products/{product_id}/analyze",
     response_model=ProductAnalysis,

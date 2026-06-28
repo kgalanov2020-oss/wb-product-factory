@@ -247,6 +247,29 @@ header p,
   background: #fef3f2;
 }
 
+.analysis-status strong {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 12px;
+}
+
+.analysis-grid dt {
+  color: #667085;
+}
+
+.analysis-grid dd {
+  margin: 0;
+}
+
+.analysis-grid dd:last-child {
+  line-height: 1.35;
+}
+
 .product-card img,
 .no-photo {
   width: 180px;

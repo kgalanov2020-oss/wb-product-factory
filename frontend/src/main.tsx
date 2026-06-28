@@ -73,6 +73,20 @@ type ContentJob = {
 type AnalysisState = {
   status: "running" | "completed" | "failed";
   message: string;
+  details?: ProductAnalysis;
+};
+
+type ProductAnalysis = {
+  status: string;
+  market_price_min?: string | null;
+  market_price_avg?: string | null;
+  market_price_max?: string | null;
+  competitor_count?: number | null;
+  estimated_sales?: number | null;
+  estimated_revenue?: string | null;
+  margin_percent?: number | null;
+  launch_score?: number | null;
+  notes?: string | null;
 };
 
 function App() {
@@ -225,12 +239,7 @@ function App() {
       [product.id]: { status: "running", message: "Анализ идет. Обычно это занимает 30-90 секунд." },
     }));
     try {
-      const analysis = await request<{
-        status: string;
-        launch_score?: number | null;
-        margin_percent?: number | null;
-        notes?: string | null;
-      }>(
+      const analysis = await request<ProductAnalysis>(
         `/api/v1/supplier-products/${product.id}/analyze`,
         { method: "POST" },
       );
@@ -239,14 +248,14 @@ function App() {
         setMessage(failedMessage);
         setAnalysisState((current) => ({
           ...current,
-          [product.id]: { status: "failed", message: failedMessage },
+          [product.id]: { status: "failed", message: failedMessage, details: analysis },
         }));
       } else {
-        const doneMessage = `Анализ готов. Score: ${analysis.launch_score ?? "?"}, маржа: ${analysis.margin_percent?.toFixed(1) ?? "?"}%`;
+        const doneMessage = analysisSummary(analysis);
         setMessage(doneMessage);
         setAnalysisState((current) => ({
           ...current,
-          [product.id]: { status: "completed", message: doneMessage },
+          [product.id]: { status: "completed", message: doneMessage, details: analysis },
         }));
       }
       await refresh();
@@ -259,6 +268,27 @@ function App() {
       }));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadProductAnalysis(product: SupplierProduct) {
+    if (!["analyzed", "analysis_pending"].includes(product.status)) {
+      return;
+    }
+    try {
+      const analysis = await request<ProductAnalysis>(`/api/v1/supplier-products/${product.id}/analysis`);
+      const analysisStatus =
+        analysis.status === "completed" ? "completed" : analysis.status === "failed" ? "failed" : "running";
+      const analysisMessage =
+        analysis.status === "completed"
+          ? analysisSummary(analysis)
+          : `Анализ не выполнен: ${analysis.notes ?? "нет данных"}`;
+      setAnalysisState((current) => ({
+        ...current,
+        [product.id]: { status: analysisStatus, message: analysisMessage, details: analysis },
+      }));
+    } catch {
+      // Analysis may not exist yet for legacy rows.
     }
   }
 
@@ -279,6 +309,12 @@ function App() {
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (selected) {
+      loadProductAnalysis(selected);
+    }
+  }, [selected?.id, selected?.status]);
 
   return (
     <div className="app">
@@ -373,7 +409,8 @@ function App() {
                   const currentAnalysis = analysisState[selected.id];
                   return currentAnalysis ? (
                     <div className={`analysis-status ${currentAnalysis.status}`}>
-                      {currentAnalysis.message}
+                      <strong>{currentAnalysis.message}</strong>
+                      {currentAnalysis.details ? <AnalysisDetails analysis={currentAnalysis.details} /> : null}
                     </div>
                   ) : null;
                 })()}
@@ -467,6 +504,46 @@ function Status({ label, ok }: { label: string; ok?: boolean }) {
       <strong>{ok ? "подключено" : "нет"}</strong>
     </div>
   );
+}
+
+function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
+  return (
+    <dl className="analysis-grid">
+      <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
+      <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)}</dd>
+      <dt>Продажи</dt><dd>{analysis.estimated_sales ?? "нет данных"}</dd>
+      <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)}</dd>
+      <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)}</dd>
+      <dt>Score</dt><dd>{analysis.launch_score ?? "нет данных"}</dd>
+      <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
+    </dl>
+  );
+}
+
+function analysisSummary(analysis: ProductAnalysis) {
+  return `Анализ готов: ${analysis.competitor_count ?? 0} конкурентов, средняя цена ${formatMoney(analysis.market_price_avg)}, маржа ${formatPercent(analysis.margin_percent)}, score ${analysis.launch_score ?? "нет данных"}.`;
+}
+
+function formatMoney(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") {
+    return "нет данных";
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "нет данных";
+  }
+  return `${number.toFixed(0)} ₽`;
+}
+
+function formatPercent(value?: number | null) {
+  return value === null || value === undefined ? "нет данных" : `${value.toFixed(1)}%`;
+}
+
+function formatPriceRange(analysis: ProductAnalysis) {
+  if (!analysis.market_price_min && !analysis.market_price_avg && !analysis.market_price_max) {
+    return "нет данных";
+  }
+  return `${formatMoney(analysis.market_price_min)} / ${formatMoney(analysis.market_price_avg)} / ${formatMoney(analysis.market_price_max)}`;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -34,16 +34,22 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
     estimated_revenue = sum(revenue) if revenue else None
     margin = _margin(product.wholesale_price, market_avg)
     score = _launch_score(margin, competitor_count, estimated_sales)
+    has_usable_data = any(
+        value is not None and value != 0
+        for value in (market_avg, competitor_count, estimated_sales, estimated_revenue)
+    )
 
     source_note = (
         "Базовая оценка по публичной выдаче WB. Нужна проверка MPStats для финального решения."
         if _is_wb_public_snapshot(snapshot)
         else "Авторасчет по текущему снимку MPStats. Требует проверки после нормализации данных."
     )
+    if not has_usable_data:
+        source_note = "Анализ не дал рыночных данных: MPStats/WB не вернули конкурентов, цены или продажи."
 
     return ProductAnalysis(
         product_id=product.id,
-        status="completed",
+        status="completed" if has_usable_data else "failed",
         market_price_min=market_min,
         market_price_avg=market_avg,
         market_price_max=market_max,

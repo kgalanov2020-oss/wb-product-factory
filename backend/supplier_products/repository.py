@@ -40,6 +40,8 @@ class SupplierProductRepository(Protocol):
 
     async def get_product(self, product_id: UUID) -> SupplierProduct | None: ...
 
+    async def get_analysis(self, product_id: UUID) -> ProductAnalysis | None: ...
+
     async def save_analysis(self, analysis: ProductAnalysis) -> None: ...
 
 
@@ -63,6 +65,9 @@ class NullSupplierProductRepository:
         return ProductListResponse(products=[], total=0)
 
     async def get_product(self, product_id: UUID) -> SupplierProduct | None:
+        return None
+
+    async def get_analysis(self, product_id: UUID) -> ProductAnalysis | None:
         return None
 
     async def save_analysis(self, analysis: ProductAnalysis) -> None:
@@ -246,17 +251,37 @@ class SupabaseSupplierProductRepository:
             raise _repository_error(exc) from exc
         return _product_from_row(row) if row else None
 
+    async def get_analysis(self, product_id: UUID) -> ProductAnalysis | None:
+        def select() -> dict | None:
+            response = (
+                self._client.table(self._analyses_table)
+                .select("*")
+                .eq("product_id", str(product_id))
+                .maybe_single()
+                .execute()
+            )
+            return response.data if response is not None else None
+
+        try:
+            row = await asyncio.to_thread(select)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return ProductAnalysis(**row) if row else None
+
     async def save_analysis(self, analysis: ProductAnalysis) -> None:
         payload = analysis.model_dump(mode="json")
         try:
             def save() -> None:
                 self._client.table(self._analyses_table).upsert(payload).execute()
-                self._client.table(self._products_table).update(
-                    {
-                        "status": "analyzed" if analysis.status == "completed" else "analysis_pending",
-                        "launch_score": analysis.launch_score,
-                    }
-                ).eq("id", str(analysis.product_id)).execute()
+                update_payload = {"launch_score": analysis.launch_score}
+                if analysis.status == "completed":
+                    update_payload["status"] = "analyzed"
+                elif analysis.status == "pending":
+                    update_payload["status"] = "analysis_pending"
+                self._client.table(self._products_table).update(update_payload).eq(
+                    "id",
+                    str(analysis.product_id),
+                ).execute()
 
             await asyncio.to_thread(save)
         except Exception as exc:
