@@ -13,8 +13,12 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const DEFAULT_API_URL =
-  import.meta.env.VITE_API_URL ?? "https://wb-product-factory-api.onrender.com";
+const RENDER_API_URL = "https://wb-product-factory-api.onrender.com";
+const LOCAL_API_URL = "http://127.0.0.1:8000";
+const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
+const isLocalFrontend =
+  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const DEFAULT_API_URL = import.meta.env.VITE_API_URL ?? (isLocalFrontend ? LOCAL_API_URL : RENDER_API_URL);
 
 type Integrations = {
   supabase: boolean;
@@ -104,7 +108,7 @@ type ProductAnalysis = {
 };
 
 function App() {
-  const [apiUrl, setApiUrl] = useState(DEFAULT_API_URL);
+  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem(API_URL_STORAGE_KEY) ?? DEFAULT_API_URL);
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [productStats, setProductStats] = useState<ProductStatsResponse | null>(null);
@@ -127,6 +131,10 @@ function App() {
       missing: productStats?.missing_on_wb ?? products.filter((product) => product.status === "missing_on_wb").length,
     };
   }, [jobs, productStats, products, total]);
+
+  useEffect(() => {
+    localStorage.setItem(API_URL_STORAGE_KEY, apiUrl);
+  }, [apiUrl]);
 
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${apiUrl}${path}`, options);
@@ -485,9 +493,19 @@ function App() {
         <section className="panel" id="settings">
           <div className="panel-title">
             <h2>Интеграции</h2>
-            <span>Render API</span>
+            <span>{apiUrl.includes("127.0.0.1") || apiUrl.includes("localhost") ? "Локальный API" : "Render API"}</span>
           </div>
-          <input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} />
+          <div className="api-switcher">
+            <input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} />
+            <button type="button" onClick={() => setApiUrl(LOCAL_API_URL)}>Локально</button>
+            <button type="button" onClick={() => setApiUrl(RENDER_API_URL)}>Render</button>
+          </div>
+          {!integrations?.mpstats_api ? (
+            <div className="hint">
+              MPStats API не подключен на выбранном backend. Для Render добавь переменную MPSTATS_TOKEN,
+              для локальной проверки выбери “Локально”.
+            </div>
+          ) : null}
           <div className="status-grid">
             <Status label="Supabase" ok={integrations?.supabase} />
             <Status label="MPStats" ok={integrations?.mpstats_login} />
