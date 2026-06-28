@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     supabase_mpstats_table: str = "mpstats_collections"
     supabase_product_content_jobs_table: str = "product_content_jobs"
     supabase_product_content_actions_table: str = "product_content_actions"
+    supabase_supplier_products_table: str = "supplier_products"
+    supabase_product_analyses_table: str = "product_analyses"
 
     mpstats_base_url: HttpUrl = HttpUrl("https://mpstats.io")
     mpstats_login_url: HttpUrl = HttpUrl("https://mpstats.io/login")

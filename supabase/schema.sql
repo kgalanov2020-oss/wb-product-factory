@@ -75,3 +75,70 @@ drop trigger if exists set_product_content_actions_updated_at on public.product_
 create trigger set_product_content_actions_updated_at
 before update on public.product_content_actions
 for each row execute function public.set_updated_at();
+
+create table if not exists public.supplier_products (
+  id uuid primary key default gen_random_uuid(),
+  supplier text not null default 'zvezda',
+  sku text,
+  barcode text,
+  name text not null,
+  category text,
+  wholesale_price numeric,
+  retail_price numeric,
+  stock integer,
+  photo_urls jsonb not null default '[]'::jsonb,
+  source_url text,
+  status text not null default 'new'
+    check (status in (
+      'new',
+      'missing_on_wb',
+      'listed',
+      'analysis_pending',
+      'analyzed',
+      'content_pending',
+      'content_ready',
+      'rejected'
+    )),
+  launch_score numeric,
+  raw jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (supplier, sku)
+);
+
+create index if not exists idx_supplier_products_supplier
+  on public.supplier_products (supplier);
+
+create index if not exists idx_supplier_products_status
+  on public.supplier_products (status);
+
+create index if not exists idx_supplier_products_launch_score
+  on public.supplier_products (launch_score desc nulls last);
+
+create table if not exists public.product_analyses (
+  product_id uuid primary key references public.supplier_products(id) on delete cascade,
+  status text not null default 'pending'
+    check (status in ('pending', 'completed', 'failed')),
+  market_price_min numeric,
+  market_price_avg numeric,
+  market_price_max numeric,
+  competitor_count integer,
+  estimated_sales integer,
+  estimated_revenue numeric,
+  margin_percent numeric,
+  launch_score numeric,
+  notes text,
+  raw jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists set_supplier_products_updated_at on public.supplier_products;
+create trigger set_supplier_products_updated_at
+before update on public.supplier_products
+for each row execute function public.set_updated_at();
+
+drop trigger if exists set_product_analyses_updated_at on public.product_analyses;
+create trigger set_product_analyses_updated_at
+before update on public.product_analyses
+for each row execute function public.set_updated_at();

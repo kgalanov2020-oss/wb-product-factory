@@ -22,6 +22,10 @@ services:
         value: product_content_jobs
       - key: SUPABASE_PRODUCT_CONTENT_ACTIONS_TABLE
         value: product_content_actions
+      - key: SUPABASE_SUPPLIER_PRODUCTS_TABLE
+        value: supplier_products
+      - key: SUPABASE_PRODUCT_ANALYSES_TABLE
+        value: product_analyses
       - key: MPSTATS_BASE_URL
         value: https://mpstats.io
       - key: MPSTATS_LOGIN_URL
@@ -42,3 +46,12 @@ services:
         value: https://api.aidentika.com/api/v1/public
       - key: AIDENTIKA_API_KEY
         sync: false
+  - type: web
+    name: wb-product-factory-ui
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://wb-product-factory-api.onrender.com

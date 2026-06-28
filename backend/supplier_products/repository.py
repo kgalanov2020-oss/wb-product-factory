@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Protocol
+from uuid import UUID
+
+from supabase import Client, create_client
+
+from backend.config import Settings
+
+from .exceptions import SupplierProductRepositoryError
+from .models import ProductAnalysis, ProductListResponse, SupplierProduct, SupplierProductInput
+
+
+def _repository_error(exc: Exception) -> SupplierProductRepositoryError:
+    message = str(exc).replace("\n", " ").strip()
+    if len(message) > 500:
+        message = f"{message[:500]}..."
+    return SupplierProductRepositoryError(
+        "Supplier product tables are unavailable. Apply supabase/schema.sql. "
+        f"Supabase error: {message}"
+    )
+
+
+class SupplierProductRepository(Protocol):
+    async def upsert_products(self, products: list[SupplierProductInput]) -> int: ...
+
+    async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse: ...
+
+    async def get_product(self, product_id: UUID) -> SupplierProduct | None: ...
+
+    async def save_analysis(self, analysis: ProductAnalysis) -> None: ...
+
+
+class NullSupplierProductRepository:
+    async def upsert_products(self, products: list[SupplierProductInput]) -> int:
+        return 0
+
+    async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
+        return ProductListResponse(products=[], total=0)
+
+    async def get_product(self, product_id: UUID) -> SupplierProduct | None:
+        return None
+
+    async def save_analysis(self, analysis: ProductAnalysis) -> None:
+        return None
+
+
+class SupabaseSupplierProductRepository:
+    def __init__(self, client: Client, products_table: str, analyses_table: str) -> None:
+        self._client = client
+        self._products_table = products_table
+        self._analyses_table = analyses_table
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> SupabaseSupplierProductRepository:
+        if not settings.supabase_configured:
+            raise ValueError("Supabase is not configured")
+        key = settings.supabase_service_role_key
+        assert settings.supabase_url is not None and key is not None
+        client = create_client(str(settings.supabase_url), key.get_secret_value())
+        return cls(
+            client,
+            settings.supabase_supplier_products_table,
+            settings.supabase_product_analyses_table,
+        )
+
+    async def upsert_products(self, products: list[SupplierProductInput]) -> int:
+        if not products:
+            return 0
+        payloads = [
+            {
+                "supplier": product.supplier,
+                "sku": product.sku,
+                "barcode": product.barcode,
+                "name": product.name,
+                "category": product.category,
+                "wholesale_price": str(product.wholesale_price) if product.wholesale_price is not None else None,
+                "retail_price": str(product.retail_price) if product.retail_price is not None else None,
+                "stock": product.stock,
+                "photo_urls": [str(url) for url in product.photo_urls],
+                "source_url": str(product.source_url) if product.source_url else None,
+                "raw": product.raw,
+            }
+            for product in products
+        ]
+        try:
+            await asyncio.to_thread(
+                lambda: self._client.table(self._products_table)
+                .upsert(payloads, on_conflict="supplier,sku")
+                .execute()
+            )
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return len(products)
+
+    async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
+        def select() -> tuple[list[dict], int]:
+            query = self._client.table(self._products_table).select("*", count="exact")
+            if status:
+                query = query.eq("status", status)
+            response = query.order("updated_at", desc=True).range(offset, offset + limit - 1).execute()
+            return response.data or [], response.count or 0
+
+        try:
+            rows, total = await asyncio.to_thread(select)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return ProductListResponse(products=[_product_from_row(row) for row in rows], total=total)
+
+    async def get_product(self, product_id: UUID) -> SupplierProduct | None:
+        def select() -> dict | None:
+            response = (
+                self._client.table(self._products_table)
+                .select("*")
+                .eq("id", str(product_id))
+                .maybe_single()
+                .execute()
+            )
+            return response.data if response is not None else None
+
+        try:
+            row = await asyncio.to_thread(select)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return _product_from_row(row) if row else None
+
+    async def save_analysis(self, analysis: ProductAnalysis) -> None:
+        payload = analysis.model_dump(mode="json")
+        try:
+            def save() -> None:
+                self._client.table(self._analyses_table).upsert(payload).execute()
+                self._client.table(self._products_table).update(
+                    {
+                        "status": "analyzed" if analysis.status == "completed" else "analysis_pending",
+                        "launch_score": analysis.launch_score,
+                    }
+                ).eq("id", str(analysis.product_id)).execute()
+
+            await asyncio.to_thread(save)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+
+
+def _product_from_row(row: dict) -> SupplierProduct:
+    return SupplierProduct(
+        id=row["id"],
+        supplier=row["supplier"],
+        sku=row.get("sku"),
+        barcode=row.get("barcode"),
+        name=row["name"],
+        category=row.get("category"),
+        wholesale_price=row.get("wholesale_price"),
+        retail_price=row.get("retail_price"),
+        stock=row.get("stock"),
+        photo_urls=row.get("photo_urls") or [],
+        source_url=row.get("source_url"),
+        status=row.get("status") or "new",
+        launch_score=row.get("launch_score"),
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )

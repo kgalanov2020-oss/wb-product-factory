@@ -1,0 +1,82 @@
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field, HttpUrl
+
+
+ProductStatus = Literal[
+    "new",
+    "missing_on_wb",
+    "listed",
+    "analysis_pending",
+    "analyzed",
+    "content_pending",
+    "content_ready",
+    "rejected",
+]
+
+
+class SupplierProductInput(BaseModel):
+    supplier: str = "zvezda"
+    sku: str | None = Field(default=None, max_length=120)
+    barcode: str | None = Field(default=None, max_length=120)
+    name: str = Field(min_length=1, max_length=500)
+    category: str | None = Field(default=None, max_length=300)
+    wholesale_price: Decimal | None = None
+    retail_price: Decimal | None = None
+    stock: int | None = None
+    photo_urls: list[HttpUrl] = Field(default_factory=list)
+    source_url: HttpUrl | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class SupplierProduct(BaseModel):
+    id: UUID
+    supplier: str
+    sku: str | None
+    barcode: str | None
+    name: str
+    category: str | None
+    wholesale_price: Decimal | None
+    retail_price: Decimal | None
+    stock: int | None
+    photo_urls: list[str]
+    source_url: str | None
+    status: ProductStatus
+    launch_score: float | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PriceListImportRequest(BaseModel):
+    url: HttpUrl
+    supplier: str = "zvezda"
+
+
+class PriceListImportResult(BaseModel):
+    supplier: str
+    imported: int
+    skipped: int
+    persisted: bool
+
+
+class ProductAnalysis(BaseModel):
+    product_id: UUID
+    status: Literal["pending", "completed", "failed"]
+    market_price_min: Decimal | None = None
+    market_price_avg: Decimal | None = None
+    market_price_max: Decimal | None = None
+    competitor_count: int | None = None
+    estimated_sales: int | None = None
+    estimated_revenue: Decimal | None = None
+    margin_percent: float | None = None
+    launch_score: float | None = None
+    notes: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProductListResponse(BaseModel):
+    products: list[SupplierProduct]
+    total: int

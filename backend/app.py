@@ -2,7 +2,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.aidentika.client import AidentikaClient
 from backend.aidentika.exceptions import AidentikaConfigurationError, AidentikaError
@@ -33,6 +34,22 @@ from backend.product_content.repository import (
     SupabaseProductContentRepository,
 )
 from backend.product_content.service import ProductContentService
+from backend.supplier_products.exceptions import (
+    SupplierPriceListError,
+    SupplierProductRepositoryError,
+)
+from backend.supplier_products.models import (
+    PriceListImportRequest,
+    PriceListImportResult,
+    ProductAnalysis,
+    ProductListResponse,
+    SupplierProduct,
+)
+from backend.supplier_products.repository import (
+    NullSupplierProductRepository,
+    SupabaseSupplierProductRepository,
+)
+from backend.supplier_products.service import SupplierProductService
 
 settings = get_settings()
 
@@ -56,10 +73,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.supabase_configured
         else NullProductContentRepository()
     )
+    app.state.supplier_product_repository = (
+        SupabaseSupplierProductRepository.from_settings(settings)
+        if settings.supabase_configured
+        else NullSupplierProductRepository()
+    )
     yield
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health", tags=["system"])
@@ -107,6 +136,13 @@ def get_product_content_service(request: Request) -> ProductContentService:
     return ProductContentService(
         aidentika_client=request.app.state.aidentika_client,
         repository=request.app.state.product_content_repository,
+    )
+
+
+def get_supplier_product_service(request: Request) -> SupplierProductService:
+    return SupplierProductService(
+        repository=request.app.state.supplier_product_repository,
+        mpstats_service=request.app.state.mpstats_service,
     )
 
 
@@ -230,3 +266,109 @@ async def sync_product_content_job(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     return job
+
+
+@app.post(
+    "/api/v1/supplier-products/import-url",
+    response_model=PriceListImportResult,
+    status_code=status.HTTP_201_CREATED,
+    tags=["supplier-products"],
+)
+async def import_supplier_products_from_url(
+    payload: PriceListImportRequest,
+    request: Request,
+) -> PriceListImportResult:
+    try:
+        return await get_supplier_product_service(request).import_from_url(
+            str(payload.url),
+            payload.supplier,
+        )
+    except SupplierPriceListError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/supplier-products/import-file",
+    response_model=PriceListImportResult,
+    status_code=status.HTTP_201_CREATED,
+    tags=["supplier-products"],
+)
+async def import_supplier_products_from_file(
+    request: Request,
+    supplier: str = Form(default="zvezda"),
+    file: UploadFile = File(...),
+) -> PriceListImportResult:
+    content = await file.read()
+    try:
+        return await get_supplier_product_service(request).import_from_file(
+            content,
+            file.filename or "price.csv",
+            supplier,
+        )
+    except SupplierPriceListError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/supplier-products",
+    response_model=ProductListResponse,
+    tags=["supplier-products"],
+)
+async def list_supplier_products(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    status_filter: str | None = None,
+) -> ProductListResponse:
+    try:
+        return await get_supplier_product_service(request).list_products(
+            limit=min(max(limit, 1), 200),
+            offset=max(offset, 0),
+            status=status_filter,
+        )
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/supplier-products/{product_id}",
+    response_model=SupplierProduct,
+    tags=["supplier-products"],
+)
+async def get_supplier_product(
+    product_id: UUID,
+    request: Request,
+) -> SupplierProduct:
+    try:
+        product = await get_supplier_product_service(request).get_product(product_id)
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return product
+
+
+@app.post(
+    "/api/v1/supplier-products/{product_id}/analyze",
+    response_model=ProductAnalysis,
+    tags=["supplier-products"],
+)
+async def analyze_supplier_product(
+    product_id: UUID,
+    request: Request,
+) -> ProductAnalysis:
+    try:
+        analysis = await get_supplier_product_service(request).analyze_product(product_id)
+    except SupplierPriceListError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except MPStatsCollectorError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return analysis

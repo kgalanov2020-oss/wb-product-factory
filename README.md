@@ -15,6 +15,11 @@
 * Python 3.12
 * FastAPI
 
+### Frontend
+
+* React
+* Vite
+
 ### Browser Automation
 
 * Playwright
@@ -260,6 +265,19 @@ Endpoint принимает товар, фото и список нужных м
 3. периодически вызывать `POST /api/v1/product-content/jobs/{job_id}/sync`
 4. читать результат через `GET /api/v1/product-content/jobs/{job_id}`
 
+### Supplier Products
+
+* `POST /api/v1/supplier-products/import-url` - импорт прайса по публичной CSV/XLSX-ссылке.
+* `POST /api/v1/supplier-products/import-file` - импорт прайса из CSV/XLSX-файла.
+* `GET /api/v1/supplier-products` - список товаров поставщика.
+* `GET /api/v1/supplier-products/{product_id}` - карточка товара поставщика.
+
+Для Google Sheets ссылка должна быть доступна без входа в Google. Если обычная ссылка открывает страницу таблицы, для CSV-импорта нужен формат:
+
+```text
+https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv
+```
+
 ---
 
 ## Переменные окружения
@@ -303,3 +321,29 @@ SQL-схема лежит в `supabase/schema.sql`.
 * `mpstats_collections`
 * `product_content_jobs`
 * `product_content_actions`
+* `supplier_products`
+* `product_analyses`
+
+---
+
+## Frontend
+
+Локальный запуск интерфейса:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+По умолчанию интерфейс работает с API:
+
+```text
+https://wb-product-factory-api.onrender.com
+```
+
+Для другого API можно задать:
+
+```env
+VITE_API_URL=http://localhost:8000
+```
