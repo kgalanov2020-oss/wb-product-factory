@@ -211,13 +211,22 @@ function App() {
     setLoading(true);
     setMessage("");
     try {
-      const analysis = await request<{ launch_score?: number | null; margin_percent?: number | null }>(
+      const analysis = await request<{
+        status: string;
+        launch_score?: number | null;
+        margin_percent?: number | null;
+        notes?: string | null;
+      }>(
         `/api/v1/supplier-products/${product.id}/analyze`,
         { method: "POST" },
       );
-      setMessage(
-        `Анализ готов. Score: ${analysis.launch_score ?? "?"}, маржа: ${analysis.margin_percent?.toFixed(1) ?? "?"}%`,
-      );
+      if (analysis.status === "failed") {
+        setMessage(`Анализ не выполнен: ${analysis.notes ?? "источник данных временно недоступен"}`);
+      } else {
+        setMessage(
+          `Анализ готов. Score: ${analysis.launch_score ?? "?"}, маржа: ${analysis.margin_percent?.toFixed(1) ?? "?"}%`,
+        );
+      }
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка анализа");
