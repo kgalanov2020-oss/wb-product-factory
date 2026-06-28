@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     mpstats_storage_state_path: Path = Path("data/mpstats-state.json")
     mpstats_email: str | None = None
     mpstats_password: SecretStr | None = None
+    mpstats_token: SecretStr | None = None
     mpstats_api_token: SecretStr | None = None
 
     aidentika_base_url: HttpUrl = HttpUrl("https://api.aidentika.com/api/v1/public")
@@ -56,7 +57,11 @@ class Settings(BaseSettings):
 
     @property
     def mpstats_api_configured(self) -> bool:
-        return bool(self.mpstats_api_token)
+        return bool(self.mpstats_token or self.mpstats_api_token)
+
+    @property
+    def mpstats_api_secret(self) -> SecretStr | None:
+        return self.mpstats_token or self.mpstats_api_token
 
     @property
     def aidentika_configured(self) -> bool:
