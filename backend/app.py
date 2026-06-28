@@ -27,6 +27,9 @@ from backend.product_content.models import (
     ProductContentJob,
     ProductContentRequest,
     ProductContentStoredJob,
+    RecommendedContentRequest,
+    RecommendedContentResult,
+    SupplierProductContentRequest,
 )
 from backend.product_content.exceptions import ProductContentRepositoryError
 from backend.product_content.repository import (
@@ -228,6 +231,60 @@ async def generate_product_content(
     except AidentikaConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except AidentikaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/product-content/recommended/generate",
+    response_model=RecommendedContentResult,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["product-content"],
+)
+async def generate_recommended_product_content(
+    payload: RecommendedContentRequest,
+    request: Request,
+) -> RecommendedContentResult:
+    try:
+        return await get_product_content_service(request).generate_recommended(
+            payload,
+            request.app.state.supplier_product_repository,
+        )
+    except AidentikaConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except AidentikaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/product-content/supplier-products/{product_id}/generate",
+    response_model=ProductContentJob,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["product-content"],
+)
+async def generate_supplier_product_content(
+    product_id: UUID,
+    payload: SupplierProductContentRequest,
+    request: Request,
+) -> ProductContentJob:
+    try:
+        return await get_product_content_service(request).generate_for_supplier_product(
+            product_id,
+            payload,
+            request.app.state.supplier_product_repository,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except AidentikaConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except AidentikaError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

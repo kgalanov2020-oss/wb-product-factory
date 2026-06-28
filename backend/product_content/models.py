@@ -57,3 +57,30 @@ class ProductContentStoredJob(BaseModel):
     actions: list[ProductContentAction]
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class RecommendedContentRequest(BaseModel):
+    limit: int = Field(default=3, ge=1, le=20)
+    min_score: float = Field(default=50, ge=0, le=100)
+    assets: list[ContentAssetType] = Field(
+        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage"]
+    )
+
+
+class SupplierProductContentRequest(BaseModel):
+    assets: list[ContentAssetType] = Field(
+        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage"]
+    )
+
+
+class RecommendedContentSkippedProduct(BaseModel):
+    product_id: UUID
+    product_name: str
+    reason: str
+
+
+class RecommendedContentResult(BaseModel):
+    requested: int
+    started: int
+    skipped: list[RecommendedContentSkippedProduct] = Field(default_factory=list)
+    jobs: list[ProductContentJob] = Field(default_factory=list)

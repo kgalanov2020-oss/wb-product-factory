@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
+import httpx
+
 from backend.aidentika.client import AidentikaClient
 from backend.aidentika.exceptions import AidentikaConfigurationError
 from backend.aidentika.models import (
@@ -9,6 +11,8 @@ from backend.aidentika.models import (
     AidentikaPhotoGenerationRequest,
 )
 from backend.aidentika.models import AidentikaStatusResponse
+from backend.supplier_products.images import fetch_zvezda_product_images
+from backend.supplier_products.repository import SupplierProductRepository
 
 from .models import (
     ContentAssetType,
@@ -17,6 +21,10 @@ from .models import (
     ProductContentJobStatus,
     ProductContentRequest,
     ProductContentStoredJob,
+    RecommendedContentRequest,
+    RecommendedContentResult,
+    RecommendedContentSkippedProduct,
+    SupplierProductContentRequest,
 )
 from .repository import ProductContentRepository
 
@@ -111,6 +119,80 @@ class ProductContentService:
         fallback["actions"] = synced_actions
         return ProductContentStoredJob.model_validate(fallback)
 
+    async def generate_recommended(
+        self,
+        request: RecommendedContentRequest,
+        supplier_repository: SupplierProductRepository,
+    ) -> RecommendedContentResult:
+        if self._aidentika_client is None:
+            raise AidentikaConfigurationError("Aidentika is not configured")
+
+        products = await supplier_repository.list_recommended_products(
+            limit=request.limit,
+            min_score=request.min_score,
+        )
+        jobs: list[ProductContentJob] = []
+        skipped: list[RecommendedContentSkippedProduct] = []
+        for product in products:
+            try:
+                job = await self.generate_for_supplier_product(
+                    product.id,
+                    SupplierProductContentRequest(assets=request.assets),
+                    supplier_repository,
+                )
+            except ValueError as exc:
+                skipped.append(
+                    RecommendedContentSkippedProduct(
+                        product_id=product.id,
+                        product_name=product.name,
+                        reason=str(exc),
+                    )
+                )
+                continue
+            jobs.append(job)
+
+        return RecommendedContentResult(
+            requested=len(products),
+            started=len(jobs),
+            skipped=skipped,
+            jobs=jobs,
+        )
+
+    async def generate_for_supplier_product(
+        self,
+        product_id: UUID,
+        request: SupplierProductContentRequest,
+        supplier_repository: SupplierProductRepository,
+    ) -> ProductContentJob:
+        if self._aidentika_client is None:
+            raise AidentikaConfigurationError("Aidentika is not configured")
+        product = await supplier_repository.get_product(product_id)
+        if product is None:
+            raise ValueError("Товар не найден")
+        images = list(product.photo_urls)
+        if not images and product.source_url:
+            try:
+                images = await fetch_zvezda_product_images(product.source_url)
+            except httpx.HTTPError as exc:
+                raise ValueError(f"Не удалось загрузить страницу с фото: {exc}") from exc
+            if images:
+                await supplier_repository.update_product_photos(product.id, images)
+        if not images:
+            raise ValueError("Не найдены исходные фото товара")
+
+        analysis = await supplier_repository.get_analysis(product.id)
+        content_request = ProductContentRequest(
+            product_name=product.name,
+            brand="Звезда",
+            images=[{"url": image} for image in images[:5]],
+            assets=request.assets,
+            facts=_product_facts(product, analysis),
+            target_audience="покупатели Wildberries, моделисты, родители, покупающие сборные модели и аксессуары",
+        )
+        job = await self.generate(content_request)
+        await supplier_repository.update_product_status(product.id, "content_pending")
+        return job
+
     @staticmethod
     def _from_status(
         action: ProductContentAction,
@@ -184,3 +266,26 @@ class ProductContentService:
             ),
         }
         return f"{base} {instructions[asset_type]}"
+
+
+def _product_facts(product, analysis) -> list[str]:
+    facts: list[str] = []
+    if product.sku:
+        facts.append(f"Артикул производителя: {product.sku}")
+    if product.description:
+        facts.append(f"Описание/размер из прайса: {product.description}")
+    if product.dimensions:
+        facts.append(f"Размер упаковки: {product.dimensions}")
+    if product.weight_grams:
+        facts.append(f"Вес: {product.weight_grams} г")
+    if product.pack_units:
+        facts.append(f"В коробке: {product.pack_units} шт.")
+    if product.wholesale_price:
+        facts.append(f"Закупочная цена: {product.wholesale_price} руб.")
+    if analysis and analysis.market_price_avg:
+        facts.append(f"Средняя цена рынка по MPStats: {analysis.market_price_avg} руб.")
+    if analysis and analysis.competitor_count:
+        facts.append(f"Найдено конкурентов по MPStats: {analysis.competitor_count}")
+    if analysis and analysis.launch_score:
+        facts.append(f"Score запуска: {analysis.launch_score}")
+    return facts

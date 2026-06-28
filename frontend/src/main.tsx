@@ -75,6 +75,17 @@ type ContentJob = {
   }>;
 };
 
+type RecommendedContentResult = {
+  requested: number;
+  started: number;
+  skipped: Array<{
+    product_id: string;
+    product_name: string;
+    reason: string;
+  }>;
+  jobs: ContentJob[];
+};
+
 type AnalysisState = {
   status: "running" | "completed" | "failed";
   message: string;
@@ -218,35 +229,42 @@ function App() {
   }
 
   async function generateContent(product: SupplierProduct) {
-    const image = product.photo_urls[0];
-    if (!image) {
-      setMessage("У товара нет ссылки на фото.");
-      return;
-    }
     setLoading(true);
     setMessage("");
     try {
-      const job = await request<ContentJob>("/api/v1/product-content/generate", {
+      const job = await request<ContentJob>(`/api/v1/product-content/supplier-products/${product.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_name: product.name,
-          brand: "Звезда",
-          images: [{ url: image }],
-          assets: ["main_photo", "infographic", "advantages"],
-          facts: [
-            product.category ? `категория: ${product.category}` : "товар поставщика Звезда",
-            product.description ? `описание: ${product.description}` : "описание требует проверки",
-            product.dimensions ? `размер: ${product.dimensions}` : "размер не указан",
-            product.wholesale_price ? `закупочная цена: ${product.wholesale_price}` : "цена требует проверки",
-          ],
-          target_audience: "покупатели Wildberries, товары для хобби и сборных моделей",
-        }),
+        body: JSON.stringify({ assets: ["main_photo", "infographic", "advantages", "usage"] }),
       });
       setJobs((current) => [job, ...current]);
       setMessage(`Запущена генерация: ${job.job_id}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка генерации");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function generateRecommendedContent() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const result = await request<RecommendedContentResult>("/api/v1/product-content/recommended/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          limit: 3,
+          min_score: 50,
+          assets: ["main_photo", "infographic", "advantages", "usage"],
+        }),
+      });
+      setJobs((current) => [...result.jobs, ...current]);
+      const skipped = result.skipped.length ? `, пропущено: ${result.skipped.length}` : "";
+      setMessage(`Запущено генераций: ${result.started}${skipped}`);
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка генерации рекомендаций");
     } finally {
       setLoading(false);
     }
@@ -453,7 +471,7 @@ function App() {
                   <button onClick={() => analyzeProduct(selected)} disabled={loading}>
                     {analysisState[selected.id]?.status === "running" ? "Анализ идет..." : "MPStats-анализ"}
                   </button>
-                  <button onClick={() => generateContent(selected)} disabled={loading || !selected.photo_urls.length}>
+                  <button onClick={() => generateContent(selected)} disabled={loading}>
                     Сгенерировать карточку
                   </button>
                 </div>
@@ -465,7 +483,9 @@ function App() {
         <section className="panel" id="content">
           <div className="panel-title">
             <h2>Генерации контента</h2>
-            <span>Aidentika jobs</span>
+            <button onClick={generateRecommendedContent} disabled={loading}>
+              Сгенерировать топ-рекомендации
+            </button>
           </div>
           <div className="jobs">
             {jobs.map((job) => (

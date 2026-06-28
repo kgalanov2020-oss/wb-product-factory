@@ -44,6 +44,12 @@ class SupplierProductRepository(Protocol):
 
     async def save_analysis(self, analysis: ProductAnalysis) -> None: ...
 
+    async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]: ...
+
+    async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None: ...
+
+    async def update_product_status(self, product_id: UUID, status: str) -> None: ...
+
 
 class NullSupplierProductRepository:
     async def upsert_products(self, products: list[SupplierProductInput]) -> int:
@@ -71,6 +77,15 @@ class NullSupplierProductRepository:
         return None
 
     async def save_analysis(self, analysis: ProductAnalysis) -> None:
+        return None
+
+    async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]:
+        return []
+
+    async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
+        return None
+
+    async def update_product_status(self, product_id: UUID, status: str) -> None:
         return None
 
 
@@ -284,6 +299,47 @@ class SupabaseSupplierProductRepository:
                 ).execute()
 
             await asyncio.to_thread(save)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+
+    async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]:
+        def select() -> list[dict]:
+            response = (
+                self._client.table(self._products_table)
+                .select("*")
+                .eq("status", "analyzed")
+                .gte("launch_score", min_score)
+                .order("launch_score", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return response.data or []
+
+        try:
+            rows = await asyncio.to_thread(select)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return [_product_from_row(row) for row in rows]
+
+    async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
+        try:
+            await asyncio.to_thread(
+                lambda: self._client.table(self._products_table)
+                .update({"photo_urls": photo_urls})
+                .eq("id", str(product_id))
+                .execute()
+            )
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+
+    async def update_product_status(self, product_id: UUID, status: str) -> None:
+        try:
+            await asyncio.to_thread(
+                lambda: self._client.table(self._products_table)
+                .update({"status": status})
+                .eq("id", str(product_id))
+                .execute()
+            )
         except Exception as exc:
             raise _repository_error(exc) from exc
 
