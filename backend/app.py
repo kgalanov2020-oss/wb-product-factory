@@ -30,6 +30,7 @@ from backend.product_content.models import (
     RecommendedContentRequest,
     RecommendedContentResult,
     SupplierProductContentRequest,
+    WBContentUploadResult,
 )
 from backend.product_content.exceptions import ProductContentRepositoryError
 from backend.product_content.repository import (
@@ -109,6 +110,7 @@ async def integrations_health() -> dict[str, bool]:
         "aidentika": settings.aidentika_configured,
         "openai": settings.openai_configured,
         "gemini": settings.gemini_configured,
+        "wb_content": settings.wb_content_configured,
     }
 
 
@@ -143,6 +145,7 @@ def get_product_content_service(request: Request) -> ProductContentService:
     return ProductContentService(
         aidentika_client=request.app.state.aidentika_client,
         repository=request.app.state.product_content_repository,
+        settings=settings,
     )
 
 
@@ -324,6 +327,23 @@ async def get_product_content_job(
 
 
 @app.post(
+    "/api/v1/product-content/jobs/{job_id}/upload-wb",
+    response_model=WBContentUploadResult,
+    tags=["product-content"],
+)
+async def upload_product_content_to_wb(
+    job_id: UUID,
+    request: Request,
+) -> WBContentUploadResult:
+    try:
+        return await get_product_content_service(request).upload_to_wb(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.post(
     "/api/v1/product-content/jobs/{job_id}/sync",
     response_model=ProductContentStoredJob,
     tags=["product-content"],
@@ -421,6 +441,26 @@ async def list_supplier_products(
         )
     except SupplierProductRepositoryError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/supplier-products/recommendations",
+    response_model=ProductListResponse,
+    tags=["supplier-products"],
+)
+async def list_supplier_product_recommendations(
+    request: Request,
+    limit: int = 10,
+    min_score: float = 0,
+) -> ProductListResponse:
+    try:
+        products = await request.app.state.supplier_product_repository.list_recommended_products(
+            limit=min(max(limit, 1), 50),
+            min_score=max(min_score, 0),
+        )
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return ProductListResponse(products=products, total=len(products))
 
 
 @app.get(

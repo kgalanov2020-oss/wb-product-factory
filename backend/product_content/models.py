@@ -30,6 +30,7 @@ class ProductContentRequest(BaseModel):
     target_audience: str | None = Field(default=None, max_length=300)
     reference_image: AidentikaImageInput | None = None
     webhook_url: HttpUrl | None = None
+    card_draft: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProductContentAction(BaseModel):
@@ -84,3 +85,9 @@ class RecommendedContentResult(BaseModel):
     started: int
     skipped: list[RecommendedContentSkippedProduct] = Field(default_factory=list)
     jobs: list[ProductContentJob] = Field(default_factory=list)
+
+
+class WBContentUploadResult(BaseModel):
+    status: Literal["uploaded", "not_configured", "not_ready"]
+    message: str
+    payload: dict[str, Any] = Field(default_factory=dict)

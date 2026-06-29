@@ -12,7 +12,7 @@ PRODUCT_IMAGE_PATTERN = re.compile(
 )
 
 
-async def fetch_zvezda_product_images(source_url: str, limit: int = 5) -> list[str]:
+async def fetch_zvezda_product_images(source_url: str, limit: int = 20) -> list[str]:
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         response = await client.get(source_url)
     response.raise_for_status()

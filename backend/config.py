@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     aidentika_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
+    wb_content_api_token: SecretStr | None = None
+    wb_content_base_url: HttpUrl = HttpUrl("https://content-api.wildberries.ru")
 
     @property
     def supabase_configured(self) -> bool:
@@ -74,6 +76,10 @@ class Settings(BaseSettings):
     @property
     def gemini_configured(self) -> bool:
         return bool(self.gemini_api_key)
+
+    @property
+    def wb_content_configured(self) -> bool:
+        return bool(self.wb_content_api_token)
 
 
 @lru_cache

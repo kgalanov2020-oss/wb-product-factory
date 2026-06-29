@@ -27,6 +27,7 @@ type Integrations = {
   aidentika: boolean;
   openai: boolean;
   gemini: boolean;
+  wb_content: boolean;
 };
 
 type SupplierProduct = {
@@ -66,6 +67,9 @@ type ContentJob = {
   job_id: string;
   status: string;
   product_name: string;
+  request_payload?: {
+    card_draft?: WBCardDraft;
+  };
   actions: Array<{
     asset_type: string;
     action_id: number;
@@ -73,6 +77,26 @@ type ContentJob = {
     result_url?: string | null;
     error_message?: string | null;
   }>;
+};
+
+type WBCardDraft = {
+  vendor_code?: string | null;
+  barcode?: string | null;
+  brand?: string | null;
+  title?: string | null;
+  subject?: string | null;
+  description?: string | null;
+  characteristics?: Record<string, string | number | null>;
+  dimensions?: Record<string, string | number | null>;
+  recommended_price?: string | number | null;
+  source_images?: string[];
+  generated_images?: string[];
+};
+
+type WBUploadResult = {
+  status: string;
+  message: string;
+  payload?: WBCardDraft;
 };
 
 type RecommendedContentResult = {
@@ -104,6 +128,16 @@ type ProductAnalysis = {
   launch_score?: number | null;
   notes?: string | null;
   raw?: {
+    analysis_period?: {
+      label?: string;
+      date_from?: string;
+      date_to?: string;
+      price_basis?: string;
+      sales_basis?: string;
+      revenue_basis?: string;
+      margin_basis?: string;
+      score_basis?: string;
+    };
     mpstats_snapshot?: {
       competitors?: Array<{
         name?: string | null;
@@ -113,6 +147,10 @@ type ProductAnalysis = {
         sales?: number | null;
         revenue?: string | number | null;
         nm_id?: string | number | null;
+        rating?: string | number | null;
+        feedbacks?: string | number | null;
+        stock?: string | number | null;
+        url?: string | null;
       }>;
     };
   };
@@ -125,6 +163,7 @@ function App() {
   });
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
+  const [recommendations, setRecommendations] = useState<SupplierProduct[]>([]);
   const [productStats, setProductStats] = useState<ProductStatsResponse | null>(null);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<SupplierProduct | null>(null);
@@ -163,15 +202,17 @@ function App() {
     setLoading(true);
     setMessage("");
     try {
-      const [health, stats, productList, contentJobs] = await Promise.all([
+      const [health, stats, productList, recommendationList, contentJobs] = await Promise.all([
         request<Integrations>("/api/v1/integrations/health"),
         request<ProductStatsResponse>("/api/v1/supplier-products/stats"),
         request<ProductListResponse>("/api/v1/supplier-products?limit=100"),
+        request<ProductListResponse>("/api/v1/supplier-products/recommendations?limit=10"),
         request<ContentJob[]>("/api/v1/product-content/jobs?limit=20"),
       ]);
       setIntegrations(health);
       setProductStats(stats);
       setProducts(productList.products);
+      setRecommendations(recommendationList.products);
       setTotal(productList.total);
       setJobs(contentJobs);
       setSelected((current) => {
@@ -351,6 +392,20 @@ function App() {
     }
   }
 
+  async function uploadJobToWb(jobId: string) {
+    setLoading(true);
+    try {
+      const result = await request<WBUploadResult>(`/api/v1/product-content/jobs/${jobId}/upload-wb`, {
+        method: "POST",
+      });
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка выгрузки в WB");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     refresh();
   }, []);
@@ -485,6 +540,30 @@ function App() {
           </div>
         </section>
 
+        <section className="panel recommendations">
+          <div className="panel-title">
+            <h2>Топ-10 рекомендаций</h2>
+            <span>по score запуска</span>
+          </div>
+          <div className="recommendation-list">
+            {recommendations.map((product, index) => (
+              <button
+                className="recommendation-row"
+                key={product.id}
+                onClick={() => setSelected(product)}
+              >
+                <strong>{index + 1}</strong>
+                <span>{product.name}</span>
+                <em>score {product.launch_score?.toFixed(2)}</em>
+                <small>{recommendationReason(product)}</small>
+              </button>
+            ))}
+            {!recommendations.length ? (
+              <div className="empty">Топ появится после MPStats-анализа товаров.</div>
+            ) : null}
+          </div>
+        </section>
+
         <section className="panel" id="content">
           <div className="panel-title">
             <h2>Генерации контента</h2>
@@ -500,6 +579,8 @@ function App() {
                   <span>{job.status}</span>
                 </div>
                 <button onClick={() => syncJob(job.job_id)} disabled={loading}>Обновить</button>
+                <button onClick={() => uploadJobToWb(job.job_id)} disabled={loading}>Выгрузить в WB</button>
+                <WBCardDraftView draft={job.request_payload?.card_draft} />
                 <div className="job-actions">
                   {job.actions.map((action) => (
                     <div key={action.action_id}>
@@ -565,15 +646,20 @@ function Status({ label, ok }: { label: string; ok?: boolean }) {
 }
 
 function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
+  const period = analysis.raw?.analysis_period;
   return (
     <>
+      <div className="analysis-period">
+        <strong>Период: {period?.label ?? "последние 30 дней"}</strong>
+        <span>{period?.date_from && period?.date_to ? `${period.date_from} - ${period.date_to}` : "MPStats-снимок за доступный период"}</span>
+      </div>
       <dl className="analysis-grid">
         <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
-        <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)}</dd>
-        <dt>Продажи</dt><dd>{analysis.estimated_sales ?? "нет данных"}</dd>
-        <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)}</dd>
-        <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)}</dd>
-        <dt>Score</dt><dd>{analysis.launch_score ?? "нет данных"}</dd>
+        <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)} <small>мин / средняя / макс</small></dd>
+        <dt>Продажи</dt><dd>{formatNumber(analysis.estimated_sales)} <small>{period?.sales_basis ?? "сумма по конкурентам за период"}</small></dd>
+        <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)} <small>{period?.revenue_basis ?? "сумма по конкурентам за период"}</small></dd>
+        <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)} <small>{period?.margin_basis ?? "по средней цене рынка, без расходов WB"}</small></dd>
+        <dt>Score</dt><dd>{analysis.launch_score ?? "нет данных"} <small>{period?.score_basis ?? "маржа + конкуренция + спрос"}</small></dd>
         <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
       </dl>
       <TopCompetitors analysis={analysis} />
@@ -582,17 +668,25 @@ function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
 }
 
 function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
-  const competitors = analysis.raw?.mpstats_snapshot?.competitors?.slice(0, 5) ?? [];
+  const competitors = analysis.raw?.mpstats_snapshot?.competitors?.slice(0, 10) ?? [];
   if (!competitors.length) {
     return null;
   }
   return (
     <div className="competitors">
-      <strong>Найденные конкуренты</strong>
+      <strong>Топ конкурентов за период</strong>
       {competitors.map((competitor, index) => (
         <div key={`${competitor.nm_id ?? index}-${competitor.name ?? ""}`}>
-          <span>{competitor.name ?? "Без названия"}</span>
+          <span>{index + 1}. {competitor.name ?? "Без названия"}</span>
           <em>{formatEntityName(competitor.brand)} / {formatEntityName(competitor.supplier)}</em>
+          <dl>
+            <dt>Цена</dt><dd>{formatMoney(competitor.price)}</dd>
+            <dt>Продажи</dt><dd>{formatNumber(competitor.sales)}</dd>
+            <dt>Выручка</dt><dd>{formatMoney(competitor.revenue)}</dd>
+            <dt>Отзывы</dt><dd>{formatNumber(competitor.feedbacks)}</dd>
+            <dt>Остаток</dt><dd>{formatNumber(competitor.stock)}</dd>
+            <dt>WB</dt><dd>{competitor.url ? <a href={competitor.url} target="_blank">Открыть</a> : competitor.nm_id ?? "нет данных"}</dd>
+          </dl>
         </div>
       ))}
     </div>
@@ -614,6 +708,17 @@ function formatMoney(value?: string | number | null) {
   return `${number.toFixed(0)} ₽`;
 }
 
+function formatNumber(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") {
+    return "нет данных";
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "нет данных";
+  }
+  return number.toLocaleString("ru-RU");
+}
+
 function formatPercent(value?: number | null) {
   return value === null || value === undefined ? "нет данных" : `${value.toFixed(1)}%`;
 }
@@ -623,6 +728,43 @@ function formatPriceRange(analysis: ProductAnalysis) {
     return "нет данных";
   }
   return `${formatMoney(analysis.market_price_min)} / ${formatMoney(analysis.market_price_avg)} / ${formatMoney(analysis.market_price_max)}`;
+}
+
+function recommendationReason(product: SupplierProduct) {
+  const reasons = [
+    product.status === "analyzed" ? "есть анализ MPStats" : null,
+    product.launch_score ? `score ${product.launch_score.toFixed(2)}` : null,
+    product.wholesale_price ? `закупка ${formatMoney(product.wholesale_price)}` : null,
+    product.photo_urls.length || product.source_url ? "есть фото/ссылка Звезды" : "нет фото",
+  ].filter(Boolean);
+  return reasons.join(", ");
+}
+
+function WBCardDraftView({ draft }: { draft?: WBCardDraft }) {
+  if (!draft) {
+    return null;
+  }
+  return (
+    <div className="card-draft">
+      <strong>Черновик карточки WB</strong>
+      <dl>
+        <dt>Название</dt><dd>{draft.title ?? "нет"}</dd>
+        <dt>Предмет</dt><dd>{draft.subject ?? "нет"}</dd>
+        <dt>Артикул</dt><dd>{draft.vendor_code ?? "нет"}</dd>
+        <dt>Штрихкод</dt><dd>{draft.barcode ?? "нет"}</dd>
+        <dt>Цена</dt><dd>{formatMoney(draft.recommended_price)}</dd>
+        <dt>Фото Звезды</dt><dd>{draft.source_images?.length ?? 0}</dd>
+        <dt>Описание</dt><dd>{draft.description ?? "нет"}</dd>
+      </dl>
+      {draft.characteristics ? (
+        <div className="characteristics">
+          {Object.entries(draft.characteristics).map(([key, value]) => (
+            <span key={key}>{key}: {String(value)}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function formatEntityName(value?: string | { name?: string | null } | null) {

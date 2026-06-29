@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -61,7 +62,19 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
         margin_percent=margin,
         launch_score=score,
         notes=source_note,
-        raw={"mpstats_snapshot": snapshot.model_dump(mode="json")},
+        raw={
+            "analysis_period": {
+                "label": "последние 30 дней",
+                "date_from": (datetime.now(timezone.utc).date() - timedelta(days=31)).isoformat(),
+                "date_to": (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat(),
+                "sales_basis": "сумма продаж найденных конкурентов за период",
+                "revenue_basis": "сумма выручки найденных конкурентов за период",
+                "price_basis": "минимальная / средняя / максимальная цена найденных конкурентов",
+                "margin_basis": "грубая маржа = (средняя цена рынка - закупка) / средняя цена рынка; без комиссий WB, логистики, налогов и рекламы",
+                "score_basis": "score = маржа до 45 баллов + низкая конкуренция до 25 баллов + продажи до 30 баллов",
+            },
+            "mpstats_snapshot": snapshot.model_dump(mode="json"),
+        },
     )
 
 

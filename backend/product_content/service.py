@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from uuid import UUID, uuid4
 
 import httpx
@@ -13,6 +14,7 @@ from backend.aidentika.models import (
 from backend.aidentika.models import AidentikaStatusResponse
 from backend.supplier_products.images import fetch_zvezda_product_images
 from backend.supplier_products.repository import SupplierProductRepository
+from backend.config import Settings
 
 from .models import (
     ContentAssetType,
@@ -25,6 +27,7 @@ from .models import (
     RecommendedContentResult,
     RecommendedContentSkippedProduct,
     SupplierProductContentRequest,
+    WBContentUploadResult,
 )
 from .repository import ProductContentRepository
 
@@ -34,9 +37,11 @@ class ProductContentService:
         self,
         aidentika_client: AidentikaClient | None,
         repository: ProductContentRepository,
+        settings: Settings | None = None,
     ) -> None:
         self._aidentika_client = aidentika_client
         self._repository = repository
+        self._settings = settings
 
     async def generate(self, request: ProductContentRequest) -> ProductContentJob:
         if self._aidentika_client is None:
@@ -184,6 +189,7 @@ class ProductContentService:
             raise ValueError("Не найдены исходные фото товара")
 
         analysis = await supplier_repository.get_analysis(product.id)
+        card_draft = _build_card_draft(product, analysis, images)
         content_request = ProductContentRequest(
             product_name=product.name,
             brand="Звезда",
@@ -191,10 +197,45 @@ class ProductContentService:
             assets=request.assets,
             facts=_product_facts(product, analysis),
             target_audience="покупатели Wildberries, моделисты, родители, покупающие сборные модели и аксессуары",
+            card_draft=card_draft,
         )
         job = await self.generate(content_request)
         await supplier_repository.update_product_status(product.id, "content_pending")
         return job
+
+    async def upload_to_wb(self, job_id: UUID) -> WBContentUploadResult:
+        job = await self._repository.get_job(job_id)
+        if job is None:
+            raise ValueError("Задача генерации не найдена")
+        card_draft = job.request_payload.get("card_draft") or {}
+        if not card_draft:
+            return WBContentUploadResult(
+                status="not_ready",
+                message="В задаче нет черновика карточки WB. Перегенерируй карточку товара.",
+            )
+        image_urls = [
+            action.result_url
+            for action in job.actions
+            if action.status.lower() in {"completed", "done", "success"} and action.result_url
+        ]
+        if not image_urls:
+            return WBContentUploadResult(
+                status="not_ready",
+                message="Сначала дождись готовых изображений карточки.",
+                payload=card_draft,
+            )
+        payload = {**card_draft, "generated_images": image_urls}
+        if not self._settings or not self._settings.wb_content_configured:
+            return WBContentUploadResult(
+                status="not_configured",
+                message="Для выгрузки нужен WB_CONTENT_API_TOKEN в backend-сервисе Render.",
+                payload=payload,
+            )
+        return WBContentUploadResult(
+            status="not_ready",
+            message="WB Content API token найден. Следующий шаг: подключить маппинг предмета WB и обязательных характеристик перед созданием карточки.",
+            payload=payload,
+        )
 
     @staticmethod
     def _from_status(
@@ -292,3 +333,74 @@ def _product_facts(product, analysis) -> list[str]:
     if analysis and analysis.launch_score:
         facts.append(f"Score запуска: {analysis.launch_score}")
     return facts
+
+
+def _build_card_draft(product, analysis, image_urls: list[str]) -> dict:
+    title = _clean_title(product.name, product.sku)
+    market_price = str(analysis.market_price_avg) if analysis and analysis.market_price_avg else None
+    subject = _analysis_subject(analysis) or product.category or "Игрушки / Сборные модели"
+    description_parts = [
+        f"{title} от бренда Звезда — сборная модель для хобби, коллекции и подарка.",
+        "Карточка подготовлена автоматически на основании прайса поставщика, фото товара и рыночного анализа.",
+    ]
+    if product.description:
+        description_parts.append(f"Характеристика из прайса: {product.description}.")
+    if product.dimensions:
+        description_parts.append(f"Размер упаковки: {product.dimensions}.")
+    if product.pack_units:
+        description_parts.append(f"В коробке поставщика: {product.pack_units} шт.")
+    characteristics = {
+        "Бренд": "Звезда",
+        "Артикул производителя": product.sku,
+        "Штрихкод": product.barcode,
+        "Предмет": subject,
+        "Размер": product.description,
+        "Размер упаковки": product.dimensions,
+        "Вес, г": str(product.weight_grams) if product.weight_grams is not None else None,
+        "Комплектация": "сборная модель",
+        "Страна производства": "Россия",
+    }
+    return {
+        "vendor_code": product.sku,
+        "barcode": product.barcode,
+        "brand": "Звезда",
+        "title": title,
+        "subject": subject,
+        "description": " ".join(description_parts),
+        "characteristics": {key: value for key, value in characteristics.items() if value not in (None, "")},
+        "dimensions": _dimensions_payload(product.dimensions),
+        "wholesale_price": str(product.wholesale_price) if product.wholesale_price is not None else None,
+        "recommended_price": market_price,
+        "source_images": image_urls,
+        "status": "draft",
+    }
+
+
+def _clean_title(name: str, sku: str | None) -> str:
+    title = name.strip()
+    if sku and title.startswith(sku):
+        title = title[len(sku):].strip(" .-")
+    return title[:120]
+
+
+def _analysis_subject(analysis) -> str | None:
+    competitors = ((analysis.raw or {}).get("mpstats_snapshot") or {}).get("competitors") if analysis else None
+    if isinstance(competitors, list):
+        for competitor in competitors:
+            if isinstance(competitor, dict) and competitor.get("subject"):
+                return competitor["subject"]
+    return None
+
+
+def _dimensions_payload(dimensions: str | None) -> dict:
+    if not dimensions:
+        return {}
+    parts = [part for part in re.split(r"[xхХ*×]", dimensions) if part.strip()]
+    if len(parts) < 3:
+        return {"raw": dimensions}
+    return {
+        "length_mm": parts[0].strip(),
+        "width_mm": parts[1].strip(),
+        "height_mm": parts[2].strip(),
+        "raw": dimensions,
+    }

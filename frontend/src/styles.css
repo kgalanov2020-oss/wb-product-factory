@@ -266,8 +266,27 @@ header p,
   margin: 0;
 }
 
+.analysis-grid small,
+.analysis-period span {
+  display: block;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+
 .analysis-grid dd:last-child {
   line-height: 1.35;
+}
+
+.analysis-period {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid #dce3ea;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .competitors {
@@ -287,6 +306,18 @@ header p,
   border: 1px solid #dce3ea;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.55);
+}
+
+.competitors dl {
+  grid-template-columns: repeat(6, auto 1fr);
+  gap: 4px 8px;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.competitors dt,
+.competitors dd {
+  min-width: 0;
 }
 
 .competitors em {
@@ -358,6 +389,10 @@ dd {
   justify-content: space-between;
 }
 
+.job > button {
+  justify-self: start;
+}
+
 .job-actions {
   display: grid;
   gap: 8px;
@@ -374,6 +409,58 @@ dd {
 
 .job-actions a {
   color: #0b65c2;
+}
+
+.recommendations {
+  order: 3;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 10px;
+  text-align: left;
+  align-items: center;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.recommendation-row small {
+  grid-column: 2 / 4;
+  color: #667085;
+}
+
+.card-draft {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.card-draft dl {
+  grid-template-columns: 120px 1fr;
+  gap: 6px 10px;
+}
+
+.characteristics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.characteristics span {
+  border: 1px solid #dce3ea;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #ffffff;
+  font-size: 13px;
 }
 
 .empty {
