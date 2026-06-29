@@ -562,8 +562,8 @@ function App() {
         {page === "analysis" ? <section className="analysis-page page-panel">
           <div className="panel recommendations">
             <div className="panel-title">
-              <h2>Топ-10 рекомендаций</h2>
-              <span>только товары из прайса Звезда</span>
+              <h2>Топ рекомендаций</h2>
+              <span>показано {recommendations.length} из 10, только товары из прайса Звезда</span>
             </div>
             <div className="recommendation-list">
               {recommendations.map((product, index) => (
