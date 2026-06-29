@@ -434,7 +434,6 @@ function App() {
           <span>WB Factory</span>
         </div>
         <nav>
-          <a href="#dashboard"><BarChart3 size={18} /> Dashboard</a>
           <a href="#import"><FileSpreadsheet size={18} /> Прайс</a>
           <a href="#products"><Search size={18} /> Товары</a>
           <a href="#analysis"><BarChart3 size={18} /> Анализ</a>
