@@ -303,20 +303,34 @@ class SupabaseSupplierProductRepository:
             raise _repository_error(exc) from exc
 
     async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]:
-        def select() -> list[dict]:
-            response = (
+        def select_analyzed() -> list[dict]:
+            query = (
                 self._client.table(self._products_table)
                 .select("*")
                 .eq("status", "analyzed")
-                .gte("launch_score", min_score)
                 .order("launch_score", desc=True)
                 .limit(max(limit * 5, 20))
-                .execute()
             )
+            if min_score > 0:
+                query = query.gte("launch_score", min_score)
+            response = query.execute()
+            return response.data or []
+
+        def select_fillers() -> list[dict]:
+            query = (
+                self._client.table(self._products_table)
+                .select("*")
+                .in_("status", ["missing_on_wb", "new"])
+                .order("updated_at", desc=True)
+                .limit(max(limit * 5, 20))
+            )
+            response = query.execute()
             return response.data or []
 
         try:
-            rows = await asyncio.to_thread(select)
+            rows = await asyncio.to_thread(select_analyzed)
+            if min_score <= 0 and len(rows) < limit:
+                rows.extend(await asyncio.to_thread(select_fillers))
         except Exception as exc:
             raise _repository_error(exc) from exc
         products = [_product_from_row(row) for row in rows]

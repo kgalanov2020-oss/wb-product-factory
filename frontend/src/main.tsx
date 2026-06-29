@@ -574,7 +574,7 @@ function App() {
                 >
                   <strong>{index + 1}</strong>
                   <span>{product.name}</span>
-                  <em>оценка {product.launch_score?.toFixed(2)}</em>
+                  <em>{product.launch_score ? `оценка ${product.launch_score.toFixed(2)}` : "нужен анализ"}</em>
                   <small>{recommendationReason(product)}</small>
                 </button>
               ))}
@@ -849,6 +849,7 @@ function formatPriceRange(analysis: ProductAnalysis) {
 function recommendationReason(product: SupplierProduct) {
   const reasons = [
     product.status === "analyzed" ? "есть анализ MPStats" : null,
+    product.status !== "analyzed" ? "нужно посчитать MPStats" : null,
     product.launch_score ? `оценка запуска ${product.launch_score.toFixed(2)} из 100` : null,
     product.wholesale_price ? `закупка ${formatMoney(product.wholesale_price)}` : null,
     product.photo_urls.length || product.source_url ? "есть фото/ссылка Звезды" : "нет фото",
