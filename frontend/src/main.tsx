@@ -586,7 +586,7 @@ function App() {
               <article className="job" key={job.job_id}>
                 <div>
                   <strong>{job.product_name}</strong>
-                  <span>{job.status}</span>
+                  <span>{formatJobStatus(job.status)}</span>
                 </div>
                 <button onClick={() => syncJob(job.job_id)} disabled={loading}>Обновить</button>
                 <button onClick={() => uploadJobToWb(job.job_id)} disabled={loading}>Выгрузить в WB</button>
@@ -595,7 +595,7 @@ function App() {
                   {job.actions.map((action) => (
                     <div key={action.action_id}>
                       <span>{action.asset_type}</span>
-                      <em>{action.status}</em>
+                      <em>{formatJobStatus(action.status)}</em>
                       {action.result_url ? <a href={action.result_url} target="_blank">Открыть</a> : null}
                     </div>
                   ))}
@@ -821,6 +821,22 @@ function formatEntityName(value?: string | { name?: string | null } | null) {
     return value;
   }
   return value.name ?? "нет данных";
+}
+
+function formatJobStatus(status?: string | null) {
+  const statuses: Record<string, string> = {
+    queued: "в очереди",
+    running: "в работе",
+    processing: "в работе",
+    in_progress: "в работе",
+    completed: "готово",
+    done: "готово",
+    success: "готово",
+    failed: "ошибка",
+    error: "ошибка",
+    partial: "частично готово",
+  };
+  return status ? statuses[status.toLowerCase()] ?? status : "нет статуса";
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
