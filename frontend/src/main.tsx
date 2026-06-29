@@ -529,19 +529,10 @@ function App() {
           <div className="panel details">
             <div className="panel-title">
               <h2>{selected ? selected.name : "Товар не выбран"}</h2>
-              <span>{selected?.status ?? "status"}</span>
+              <span>{formatProductStatus(selected?.status)}</span>
             </div>
             {selected ? (
               <>
-                {(() => {
-                  const currentAnalysis = analysisState[selected.id];
-                  return currentAnalysis ? (
-                    <div className={`analysis-status ${currentAnalysis.status}`}>
-                      <strong>{currentAnalysis.message}</strong>
-                      {currentAnalysis.details ? <AnalysisDetails analysis={currentAnalysis.details} /> : null}
-                    </div>
-                  ) : null;
-                })()}
                 <div className="product-card">
                   {selected.photo_urls[0] ? <img src={selected.photo_urls[0]} alt={selected.name} /> : <div className="no-photo">Нет фото</div>}
                   <dl>
@@ -556,11 +547,11 @@ function App() {
                   </dl>
                 </div>
                 <div className="actions">
-                  <button onClick={() => analyzeProduct(selected)} disabled={loading}>
-                    {analysisState[selected.id]?.status === "running" ? "Анализ идет..." : "MPStats-анализ"}
-                  </button>
                   <button onClick={() => generateContent(selected)} disabled={loading}>
                     Сгенерировать карточку
+                  </button>
+                  <button onClick={() => navigate("analysis")}>
+                    Открыть анализ
                   </button>
                 </div>
               </>
