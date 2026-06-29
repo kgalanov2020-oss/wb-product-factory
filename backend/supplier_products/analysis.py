@@ -71,8 +71,8 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
                 "label": "последние 30 дней",
                 "date_from": (datetime.now(timezone.utc).date() - timedelta(days=31)).isoformat(),
                 "date_to": (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat(),
-                "sales_basis": "сумма продаж найденных конкурентов за период",
-                "revenue_basis": "сумма выручки найденных конкурентов за период",
+                "sales_basis": "сумма заказов найденных конкурентов за период",
+                "revenue_basis": "сумма заказов в рублях найденных конкурентов за период",
                 "price_basis": "минимальная / средняя / максимальная цена найденных конкурентов",
                 "margin_basis": "грубая маржа = (средняя цена рынка - закупка) / средняя цена рынка; без комиссий WB, логистики, налогов и рекламы",
                 "score_basis": "score = маржа до 45 баллов + низкая конкуренция до 25 баллов + продажи до 30 баллов",
@@ -116,8 +116,12 @@ def _period_rollups(competitors: list[dict[str, Any]]) -> dict[str, dict[str, An
     for period_key, label in labels.items():
         sales_total = 0
         revenue_total = Decimal("0")
+        buyouts_total = 0
+        buyout_revenue_total = Decimal("0")
         sales_found = False
         revenue_found = False
+        buyouts_found = False
+        buyout_revenue_found = False
         date_from = None
         date_to = None
         for competitor in competitors:
@@ -125,12 +129,20 @@ def _period_rollups(competitors: list[dict[str, Any]]) -> dict[str, dict[str, An
             period = periods.get(period_key) if isinstance(periods.get(period_key), dict) else {}
             sales = _to_decimal(period.get("sales"))
             revenue = _to_decimal(period.get("revenue"))
+            buyouts = _to_decimal(period.get("buyouts"))
+            buyout_revenue = _to_decimal(period.get("buyout_revenue"))
             if sales is not None:
                 sales_total += int(sales)
                 sales_found = True
             if revenue is not None:
                 revenue_total += revenue
                 revenue_found = True
+            if buyouts is not None:
+                buyouts_total += int(buyouts)
+                buyouts_found = True
+            if buyout_revenue is not None:
+                buyout_revenue_total += buyout_revenue
+                buyout_revenue_found = True
             date_from = date_from or period.get("date_from")
             date_to = date_to or period.get("date_to")
         rollups[period_key] = {
@@ -139,6 +151,8 @@ def _period_rollups(competitors: list[dict[str, Any]]) -> dict[str, dict[str, An
             "date_to": date_to,
             "sales": min(sales_total, MAX_ESTIMATED_SALES) if sales_found else None,
             "revenue": revenue_total if revenue_found else None,
+            "buyouts": min(buyouts_total, MAX_ESTIMATED_SALES) if buyouts_found else None,
+            "buyout_revenue": buyout_revenue_total if buyout_revenue_found else None,
         }
     return rollups
 

@@ -158,12 +158,10 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     price = _first_decimal(full_price, "final_price", "wallet_price", "price") or _first_decimal(
         row, "price", "avg_price", "final_price", "sale_price", "basic_price"
     )
-    sales = _first_int(period_stats, "sales", "sales_estimated") or _first_int(
-        month_full, "sales", "orders", "quantity"
-    ) or _first_int(row, "sales", "sales_count", "orders", "purchase", "quantity")
-    revenue = _first_decimal(period_stats, "revenue", "revenue_estimated") or _first_decimal(
-        month_full, "revenue", "turnover", "sales_amount"
-    ) or _first_decimal(row, "revenue", "turnover", "sales_amount")
+    sales = _order_count(period_stats) or _order_count(month_full) or _order_count(row)
+    revenue = _order_revenue(period_stats) or _order_revenue(month_full) or _order_revenue(row)
+    buyouts = _buyout_count(period_stats) or _buyout_count(month_full) or _buyout_count(row)
+    buyout_revenue = _buyout_revenue(period_stats) or _buyout_revenue(month_full) or _buyout_revenue(row)
     seller = _first(row, "seller", "supplier", "supplier_name")
     if isinstance(seller, dict):
         seller = seller.get("name") or seller.get("id")
@@ -177,6 +175,8 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "price": price,
         "sales": sales,
         "revenue": revenue,
+        "buyouts": buyouts,
+        "buyout_revenue": buyout_revenue,
         "rating": _first(month_full, "rating", "rating_mpstats") or _first(row, "rating", "review_rating"),
         "feedbacks": _first(month_full, "comments") or _first(row, "feedbacks", "comments", "reviews"),
         "subject": subject.get("name") if isinstance(subject, dict) else None,
@@ -200,10 +200,10 @@ def _normalize_periods(details: dict[str, Any]) -> dict[str, dict[str, Any]]:
         result[period_key] = {
             "date_from": periods.get(period_key, ("", ""))[0],
             "date_to": periods.get(period_key, ("", ""))[1],
-            "sales": _first_int(stats, "sales", "sales_estimated")
-            or _first_int(payload, "sales", "orders", "quantity"),
-            "revenue": _first_decimal(stats, "revenue", "revenue_estimated")
-            or _first_decimal(payload, "revenue", "turnover", "sales_amount"),
+            "sales": _order_count(stats) or _order_count(payload),
+            "revenue": _order_revenue(stats) or _order_revenue(payload),
+            "buyouts": _buyout_count(stats) or _buyout_count(payload),
+            "buyout_revenue": _buyout_revenue(stats) or _buyout_revenue(payload),
         }
     return result
 
@@ -303,3 +303,65 @@ def _first_decimal(row: dict[str, Any], *keys: str) -> Decimal | None:
 def _first_int(row: dict[str, Any], *keys: str) -> int | None:
     decimal = _first_decimal(row, *keys)
     return int(decimal) if decimal is not None else None
+
+
+def _order_count(row: dict[str, Any]) -> int | None:
+    return _first_int(
+        row,
+        "orders",
+        "orders_count",
+        "orders_qty",
+        "orders_quantity",
+        "ordered",
+        "quantity",
+        "sales",
+        "sales_count",
+        "sales_estimated",
+        "purchase",
+    )
+
+
+def _order_revenue(row: dict[str, Any]) -> Decimal | None:
+    return _first_decimal(
+        row,
+        "orders_sum",
+        "orders_amount",
+        "orders_revenue",
+        "ordered_sum",
+        "ordered_amount",
+        "orders_rub",
+        "revenue",
+        "revenue_estimated",
+        "turnover",
+        "sales_amount",
+    )
+
+
+def _buyout_count(row: dict[str, Any]) -> int | None:
+    return _first_int(
+        row,
+        "buyouts",
+        "buyouts_count",
+        "buyouts_qty",
+        "buyout",
+        "purchases",
+        "purchase_count",
+        "sales",
+        "sales_count",
+        "sales_estimated",
+    )
+
+
+def _buyout_revenue(row: dict[str, Any]) -> Decimal | None:
+    return _first_decimal(
+        row,
+        "buyouts_sum",
+        "buyouts_amount",
+        "buyouts_revenue",
+        "buyout_sum",
+        "buyout_amount",
+        "purchase_amount",
+        "revenue",
+        "revenue_estimated",
+        "turnover",
+    )

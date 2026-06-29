@@ -369,7 +369,7 @@ header p,
 
 .period-row {
   display: grid;
-  grid-template-columns: 1fr 120px 140px;
+  grid-template-columns: 1fr 100px 120px 100px 120px;
   gap: 10px;
   align-items: center;
 }

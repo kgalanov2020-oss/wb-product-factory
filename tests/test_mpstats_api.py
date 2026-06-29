@@ -30,3 +30,42 @@ def test_normalize_mpstats_row_uses_sku_period_stats() -> None:
     assert normalized["supplier"] == "Test seller"
     assert normalized["subject"] == "Игрушки / Конструкторы"
     assert normalized["stock"] == 23
+
+
+def test_normalize_mpstats_row_keeps_orders_and_buyouts_separate() -> None:
+    row = {
+        "id": 909634410,
+        "name": "Сборная модель 7270 Вертолет Ми-26",
+        "brand": {"name": "Звезда"},
+        "seller": {"name": "ИП Багдасарян В С"},
+        "mpstats_details": {
+            "month": {
+                "price": {"final_price": 2347},
+                "period_stats": {
+                    "orders": 4,
+                    "orders_sum": 13588,
+                    "sales": 3,
+                    "revenue": 12423,
+                },
+            },
+            "quarter": {
+                "period_stats": {
+                    "orders": 4,
+                    "orders_sum": 13588,
+                    "sales": 3,
+                    "revenue": 12423,
+                },
+            },
+        },
+    }
+
+    normalized = _normalize_row(row)
+
+    assert normalized["sales"] == 4
+    assert normalized["revenue"] == Decimal("13588")
+    assert normalized["buyouts"] == 3
+    assert normalized["buyout_revenue"] == Decimal("12423")
+    assert normalized["periods"]["month"]["sales"] == 4
+    assert normalized["periods"]["month"]["revenue"] == Decimal("13588")
+    assert normalized["periods"]["month"]["buyouts"] == 3
+    assert normalized["periods"]["month"]["buyout_revenue"] == Decimal("12423")

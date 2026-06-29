@@ -168,6 +168,8 @@ type PeriodStats = {
   date_to?: string | null;
   sales?: string | number | null;
   revenue?: string | number | null;
+  buyouts?: string | number | null;
+  buyout_revenue?: string | number | null;
 };
 
 type Competitor = NonNullable<
@@ -831,8 +833,8 @@ function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
       <dl className="analysis-grid">
         <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
         <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)} <small>мин / средняя / макс</small></dd>
-        <dt>Продажи за 30 дней</dt><dd>{formatNumber(analysis.estimated_sales)} <small>{period?.sales_basis ?? "сумма по конкурентам за 30 дней"}</small></dd>
-        <dt>Выручка за 30 дней</dt><dd>{formatMoney(analysis.estimated_revenue)} <small>{period?.revenue_basis ?? "сумма по конкурентам за 30 дней"}</small></dd>
+        <dt>Заказы за 30 дней</dt><dd>{formatNumber(analysis.estimated_sales)} <small>{period?.sales_basis ?? "сумма заказов по конкурентам за 30 дней"}</small></dd>
+        <dt>Заказы, ₽ за 30 дней</dt><dd>{formatMoney(analysis.estimated_revenue)} <small>{period?.revenue_basis ?? "сумма заказов в рублях по конкурентам за 30 дней"}</small></dd>
         <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)} <small>{period?.margin_basis ?? "по средней цене рынка, без расходов WB"}</small></dd>
         <dt>Оценка запуска</dt><dd>{analysis.launch_score ?? "нет данных"} из 100 <small>чем выше, тем интереснее товар: учитываем маржу, спрос и количество конкурентов</small></dd>
         <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
@@ -856,11 +858,13 @@ function PeriodRollups({ analysis }: { analysis: ProductAnalysis }) {
   return (
     <div className="period-table">
       <strong>Продажи по периодам</strong>
-      <small>Сумма по релевантным конкурентам MPStats: штуки и деньги отдельно за каждый период.</small>
+      <small>Сумма по релевантным конкурентам MPStats: заказы показывают спрос, выкупы показывают качество спроса.</small>
       <div className="period-row head">
         <span>Период</span>
-        <span>Штуки</span>
-        <span>Деньги</span>
+        <span>Заказы</span>
+        <span>Заказы, ₽</span>
+        <span>Выкупы</span>
+        <span>Выкупы, ₽</span>
       </div>
       {periods.map(([key, fallbackLabel]) => {
         const item = rollups[key];
@@ -869,6 +873,8 @@ function PeriodRollups({ analysis }: { analysis: ProductAnalysis }) {
             <span>{item?.label ?? fallbackLabel}</span>
             <span>{formatNumber(item?.sales)}</span>
             <span>{formatMoney(item?.revenue)}</span>
+            <span>{formatNumber(item?.buyouts)}</span>
+            <span>{formatMoney(item?.buyout_revenue)}</span>
           </div>
         );
       })}
@@ -893,10 +899,12 @@ function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
           <em>{formatEntityName(competitor.brand)} / {formatEntityName(competitor.supplier)}</em>
           <div className="competitor-metrics">
             <span>Цена <b>{formatMoney(competitor.price)}</b></span>
-            <span>7д <b>{formatNumber(competitor.periods?.week?.sales)}</b> / <b>{formatMoney(competitor.periods?.week?.revenue)}</b></span>
-            <span>30д <b>{formatNumber(competitor.periods?.month?.sales)}</b> / <b>{formatMoney(competitor.periods?.month?.revenue)}</b></span>
-            <span>90д <b>{formatNumber(competitor.periods?.quarter?.sales)}</b> / <b>{formatMoney(competitor.periods?.quarter?.revenue)}</b></span>
-            <span>YTD <b>{formatNumber(competitor.periods?.year_to_date?.sales)}</b> / <b>{formatMoney(competitor.periods?.year_to_date?.revenue)}</b></span>
+            <span>Заказы 7д <b>{formatNumber(competitor.periods?.week?.sales)}</b> / <b>{formatMoney(competitor.periods?.week?.revenue)}</b></span>
+            <span>Выкупы 7д <b>{formatNumber(competitor.periods?.week?.buyouts)}</b> / <b>{formatMoney(competitor.periods?.week?.buyout_revenue)}</b></span>
+            <span>Заказы 30д <b>{formatNumber(competitor.periods?.month?.sales)}</b> / <b>{formatMoney(competitor.periods?.month?.revenue)}</b></span>
+            <span>Выкупы 30д <b>{formatNumber(competitor.periods?.month?.buyouts)}</b> / <b>{formatMoney(competitor.periods?.month?.buyout_revenue)}</b></span>
+            <span>Заказы 90д <b>{formatNumber(competitor.periods?.quarter?.sales)}</b> / <b>{formatMoney(competitor.periods?.quarter?.revenue)}</b></span>
+            <span>YTD заказы <b>{formatNumber(competitor.periods?.year_to_date?.sales)}</b> / <b>{formatMoney(competitor.periods?.year_to_date?.revenue)}</b></span>
             <span>Отзывы <b>{formatNumber(competitor.feedbacks)}</b></span>
             <span>Остаток <b>{formatNumber(competitor.stock)}</b></span>
             <span>{competitor.url ? <a href={competitor.url} target="_blank">Открыть WB</a> : competitor.nm_id ?? "нет данных"}</span>
