@@ -25,6 +25,7 @@ from backend.mpstats_collector.repository import (
 from backend.mpstats_collector.service import MPStatsCollectorService
 from backend.product_content.models import (
     ProductContentJob,
+    ProductContentRevisionRequest,
     ProductContentRequest,
     ProductContentStoredJob,
     RecommendedContentRequest,
@@ -48,6 +49,7 @@ from backend.supplier_products.models import (
     ProductAnalysis,
     ProductListResponse,
     ProductStatsResponse,
+    ProductStatus,
     SupplierProduct,
 )
 from backend.supplier_products.repository import (
@@ -366,6 +368,29 @@ async def sync_product_content_job(
 
 
 @app.post(
+    "/api/v1/product-content/jobs/{job_id}/revise",
+    response_model=ProductContentJob,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["product-content"],
+)
+async def revise_product_content_job(
+    job_id: UUID,
+    payload: ProductContentRevisionRequest,
+    request: Request,
+) -> ProductContentJob:
+    try:
+        return await get_product_content_service(request).revise_job(job_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AidentikaConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ProductContentRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except AidentikaError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post(
     "/api/v1/supplier-products/import-url",
     response_model=PriceListImportResult,
     status_code=status.HTTP_201_CREATED,
@@ -519,3 +544,22 @@ async def analyze_supplier_product(
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return analysis
+
+
+@app.patch(
+    "/api/v1/supplier-products/{product_id}/status",
+    response_model=SupplierProduct,
+    tags=["supplier-products"],
+)
+async def update_supplier_product_status(
+    product_id: UUID,
+    product_status: ProductStatus,
+    request: Request,
+) -> SupplierProduct:
+    try:
+        product = await get_supplier_product_service(request).update_status(product_id, product_status)
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return product

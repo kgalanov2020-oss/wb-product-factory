@@ -45,7 +45,12 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
     )
     if competitor_count and market_avg is None:
         source_note = "MPStats API вернул конкурентов, но не вернул цены и продажи на этом тарифе/endpoint."
-    if not has_usable_data:
+    has_period_sales = _has_period_sales(period_rollups)
+    missing_period_sales = not has_period_sales
+    if missing_period_sales:
+        has_usable_data = False
+        source_note = "Нет подтвержденных продаж и выручки по периодам MPStats. Решение о запуске принимать нельзя."
+    if not has_usable_data and not missing_period_sales:
         source_note = "Анализ не дал рыночных данных: MPStats/WB не вернули конкурентов, цены или продажи."
 
     return ProductAnalysis(
@@ -85,6 +90,13 @@ def _competitor_count(snapshot: MPStatsSnapshot) -> int:
             return len(first)
         return len(snapshot.competitors)
     return 0
+
+
+def _has_period_sales(period_rollups: dict[str, dict[str, Any]]) -> bool:
+    month = period_rollups.get("month") or {}
+    sales = _to_decimal(month.get("sales"))
+    revenue = _to_decimal(month.get("revenue"))
+    return bool(sales and sales > 0 and revenue and revenue > 0)
 
 
 def _is_wb_public_snapshot(snapshot: MPStatsSnapshot) -> bool:

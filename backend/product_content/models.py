@@ -13,6 +13,7 @@ ContentAssetType = Literal[
     "advantages",
     "usage",
     "comparison",
+    "video",
 ]
 ProductContentJobStatus = Literal["queued", "running", "completed", "failed", "partial"]
 
@@ -24,7 +25,7 @@ class ProductContentRequest(BaseModel):
     brand: str | None = Field(default=None, max_length=100)
     marketplace: Literal["wildberries"] = "wildberries"
     assets: list[ContentAssetType] = Field(
-        default_factory=lambda: ["main_photo", "infographic", "advantages"]
+        default_factory=lambda: ["main_photo", "infographic", "advantages", "video"]
     )
     facts: list[str] = Field(default_factory=list, max_length=20)
     target_audience: str | None = Field(default=None, max_length=300)
@@ -64,13 +65,20 @@ class RecommendedContentRequest(BaseModel):
     limit: int = Field(default=3, ge=1, le=20)
     min_score: float = Field(default=50, ge=0, le=100)
     assets: list[ContentAssetType] = Field(
-        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage"]
+        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage", "video"]
     )
 
 
 class SupplierProductContentRequest(BaseModel):
     assets: list[ContentAssetType] = Field(
-        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage"]
+        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage", "video"]
+    )
+
+
+class ProductContentRevisionRequest(BaseModel):
+    comment: str = Field(min_length=3, max_length=2_000)
+    assets: list[ContentAssetType] = Field(
+        default_factory=lambda: ["main_photo", "infographic", "advantages", "usage", "video"]
     )
 
 

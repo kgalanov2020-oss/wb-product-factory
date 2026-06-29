@@ -309,14 +309,19 @@ class SupabaseSupplierProductRepository:
                 self._client.table(self._analyses_table)
                 .select("product_id,launch_score,raw,status")
                 .eq("status", "completed")
-                .contains("raw", {"analysis_version": ANALYSIS_VERSION})
                 .order("launch_score", desc=True)
                 .limit(max(limit * 5, 20))
             )
             if min_score > 0:
                 query = query.gte("launch_score", min_score)
             response = query.execute()
-            return response.data or []
+            return [
+                row
+                for row in response.data or []
+                if isinstance(row.get("raw"), dict)
+                and row["raw"].get("analysis_version") == ANALYSIS_VERSION
+                and _has_recommendation_data(row["raw"])
+            ]
 
         def select_products_by_ids(product_ids: list[str]) -> list[dict]:
             if not product_ids:
@@ -331,23 +336,10 @@ class SupabaseSupplierProductRepository:
             order = {product_id: index for index, product_id in enumerate(product_ids)}
             return sorted(rows, key=lambda row: order.get(str(row.get("id")), len(order)))
 
-        def select_fillers() -> list[dict]:
-            query = (
-                self._client.table(self._products_table)
-                .select("*")
-                .in_("status", ["missing_on_wb", "new"])
-                .order("updated_at", desc=True)
-                .limit(max(limit * 5, 20))
-            )
-            response = query.execute()
-            return response.data or []
-
         try:
             analysis_rows = await asyncio.to_thread(select_analyzed)
             product_ids = [str(row["product_id"]) for row in analysis_rows if row.get("product_id")]
             rows = await asyncio.to_thread(lambda: select_products_by_ids(product_ids))
-            if min_score <= 0 and len(rows) < limit:
-                rows.extend(await asyncio.to_thread(select_fillers))
         except Exception as exc:
             raise _repository_error(exc) from exc
         products = [_product_from_row(row) for row in rows]
@@ -405,6 +397,27 @@ def _product_from_row(row: dict) -> SupplierProduct:
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )
+
+
+def _has_recommendation_data(raw: dict) -> bool:
+    rollups = raw.get("period_rollups")
+    if not isinstance(rollups, dict):
+        return False
+    month = rollups.get("month")
+    if not isinstance(month, dict):
+        return False
+    sales = _safe_number(month.get("sales"))
+    revenue = _safe_number(month.get("revenue"))
+    return sales > 0 and revenue > 0
+
+
+def _safe_number(value: object) -> float:
+    try:
+        if value in (None, ""):
+            return 0
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _mapping_key(mapping: WBCardMappingInput) -> str:

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from backend.aidentika.client import AidentikaClient
-from backend.aidentika.exceptions import AidentikaConfigurationError
+from backend.aidentika.exceptions import AidentikaConfigurationError, AidentikaError
 from backend.aidentika.models import (
     AidentikaCardGenerationRequest,
     AidentikaPhotoGenerationRequest,
@@ -22,6 +22,7 @@ from .models import (
     ProductContentJob,
     ProductContentJobStatus,
     ProductContentRequest,
+    ProductContentRevisionRequest,
     ProductContentStoredJob,
     RecommendedContentRequest,
     RecommendedContentResult,
@@ -51,46 +52,56 @@ class ProductContentService:
 
         for asset_type in request.assets:
             idempotency_key = f"wb-product-content:{job_id}:{asset_type}"
-            if asset_type == "main_photo":
-                response = await self._aidentika_client.generate_photo(
-                    AidentikaPhotoGenerationRequest(
-                        images=request.images,
-                        category_id=request.category_id,
-                        concept_id="product_photo",
-                        product_name=request.product_name,
-                        comment=self._build_prompt(request, asset_type),
-                        aspect_ratio="3:4",
-                        webhook_url=request.webhook_url,
-                    ),
-                    idempotency_key=idempotency_key,
+            try:
+                if asset_type == "main_photo":
+                    response = await self._aidentika_client.generate_photo(
+                        AidentikaPhotoGenerationRequest(
+                            images=request.images,
+                            category_id=request.category_id,
+                            concept_id="product_photo",
+                            product_name=request.product_name,
+                            comment=self._build_prompt(request, asset_type),
+                            aspect_ratio="3:4",
+                            webhook_url=request.webhook_url,
+                        ),
+                        idempotency_key=idempotency_key,
+                    )
+                else:
+                    response = await self._aidentika_client.generate_card(
+                        AidentikaCardGenerationRequest(
+                            images=request.images,
+                            category_id=request.category_id,
+                            concept_id=self._concept_id(asset_type),
+                            product_name=request.product_name,
+                            user_text=self._build_prompt(request, asset_type),
+                            design_reference_image=request.reference_image,
+                            aspect_ratio="9:16" if asset_type == "video" else "3:4",
+                            style="classic",
+                            webhook_url=request.webhook_url,
+                        ),
+                        idempotency_key=idempotency_key,
+                    )
+                actions.append(
+                    ProductContentAction(
+                        asset_type=asset_type,
+                        action_id=response.action_id,
+                        status=response.status,
+                        poll_url=response.poll_url,
+                    )
                 )
-            else:
-                response = await self._aidentika_client.generate_card(
-                    AidentikaCardGenerationRequest(
-                        images=request.images,
-                        category_id=request.category_id,
-                        concept_id=self._concept_id(asset_type),
-                        product_name=request.product_name,
-                        user_text=self._build_prompt(request, asset_type),
-                        design_reference_image=request.reference_image,
-                        aspect_ratio="3:4",
-                        style="classic",
-                        webhook_url=request.webhook_url,
-                    ),
-                    idempotency_key=idempotency_key,
+            except AidentikaError as exc:
+                actions.append(
+                    ProductContentAction(
+                        asset_type=asset_type,
+                        action_id=-len(actions) - 1,
+                        status="failed",
+                        error_message=str(exc),
+                    )
                 )
-            actions.append(
-                ProductContentAction(
-                    asset_type=asset_type,
-                    action_id=response.action_id,
-                    status=response.status,
-                    poll_url=response.poll_url,
-                )
-            )
 
         job = ProductContentJob(
             job_id=job_id,
-            status="queued",
+            status=self._job_status(actions),
             product_name=request.product_name,
             actions=actions,
         )
@@ -103,6 +114,29 @@ class ProductContentService:
     async def list_jobs(self, limit: int = 20) -> list[ProductContentStoredJob]:
         return await self._repository.list_jobs(limit)
 
+    async def revise_job(
+        self,
+        job_id: UUID,
+        request: ProductContentRevisionRequest,
+    ) -> ProductContentJob:
+        if self._aidentika_client is None:
+            raise AidentikaConfigurationError("Aidentika is not configured")
+        job = await self._repository.get_job(job_id)
+        if job is None:
+            raise ValueError("Задача генерации не найдена")
+        payload = dict(job.request_payload or {})
+        payload["assets"] = request.assets
+        payload["facts"] = [
+            *(payload.get("facts") or []),
+            f"Правки от пользователя: {request.comment}",
+        ]
+        payload["card_draft"] = {
+            **(payload.get("card_draft") or {}),
+            "revision_comment": request.comment,
+            "parent_job_id": str(job_id),
+        }
+        return await self.generate(ProductContentRequest.model_validate(payload))
+
     async def sync_job(self, job_id: UUID) -> ProductContentStoredJob | None:
         if self._aidentika_client is None:
             raise AidentikaConfigurationError("Aidentika is not configured")
@@ -112,6 +146,9 @@ class ProductContentService:
 
         synced_actions: list[ProductContentAction] = []
         for action in job.actions:
+            if action.action_id < 0:
+                synced_actions.append(action)
+                continue
             status = await self._aidentika_client.get_status(action.action_id)
             synced_action = self._from_status(action, status)
             await self._repository.update_action(job_id, synced_action)
@@ -257,7 +294,7 @@ class ProductContentService:
         if not statuses:
             return "queued"
         if any(status in statuses for status in ("failed", "error")):
-            if any(status in statuses for status in ("completed", "done", "success")):
+            if any(status not in {"failed", "error"} for status in statuses):
                 return "partial"
             return "failed"
         if statuses <= {"completed", "done", "success"}:
@@ -274,6 +311,7 @@ class ProductContentService:
             "usage": "infographic",
             "comparison": "infographic",
             "main_photo": "product_photo",
+            "video": "video",
         }
         return concepts[asset_type]
 
@@ -307,6 +345,11 @@ class ProductContentService:
             "comparison": (
                 "Сделай сравнительный слайд: покажи, чем товар отличается от типовых аналогов, "
                 "используй только безопасные формулировки без упоминания конкретных конкурентов."
+            ),
+            "video": (
+                "Подготовь короткое вертикальное видео 10-15 секунд для карточки Wildberries: "
+                "покажи упаковку и товар, крупные планы деталей, 2-3 коротких преимущества, "
+                "без неподтвержденных обещаний и без чужих брендов."
             ),
         }
         return f"{base} {instructions[asset_type]}"

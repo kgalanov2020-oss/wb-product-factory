@@ -111,6 +111,8 @@ type RecommendedContentResult = {
   jobs: ContentJob[];
 };
 
+type ContentAssetType = "main_photo" | "infographic" | "advantages" | "usage" | "comparison" | "video";
+
 type AnalysisState = {
   status: "running" | "completed" | "failed";
   message: string;
@@ -191,6 +193,7 @@ function App() {
   const [message, setMessage] = useState("");
   const [jobs, setJobs] = useState<ContentJob[]>([]);
   const [analysisState, setAnalysisState] = useState<Record<string, AnalysisState>>({});
+  const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   const stats = useMemo(() => {
@@ -311,7 +314,7 @@ function App() {
       const job = await request<ContentJob>(`/api/v1/product-content/supplier-products/${product.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assets: ["main_photo", "infographic", "advantages", "usage"] }),
+        body: JSON.stringify({ assets: defaultContentAssets() }),
       });
       setJobs((current) => [job, ...current]);
       setMessage(`Запущена генерация: ${job.job_id}`);
@@ -330,9 +333,9 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          limit: 3,
-          min_score: 50,
-          assets: ["main_photo", "infographic", "advantages", "usage"],
+          limit: 10,
+          min_score: 0,
+          assets: defaultContentAssets(),
         }),
       });
       setJobs((current) => [...result.jobs, ...current]);
@@ -432,6 +435,29 @@ function App() {
     }
   }
 
+  async function reviseJob(jobId: string) {
+    const comment = revisionInputs[jobId]?.trim();
+    if (!comment) {
+      setMessage("Напишите, что нужно поправить в карточке.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const job = await request<ContentJob>(`/api/v1/product-content/jobs/${jobId}/revise`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment, assets: defaultContentAssets() }),
+      });
+      setJobs((current) => [job, ...current]);
+      setRevisionInputs((current) => ({ ...current, [jobId]: "" }));
+      setMessage("Запущена новая версия карточки по комментариям.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка запуска правок");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function uploadJobToWb(jobId: string) {
     setLoading(true);
     try {
@@ -441,6 +467,32 @@ function App() {
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка выгрузки в WB");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function approveRecommendation(product: SupplierProduct) {
+    await generateContent(product);
+    setRecommendations((current) => current.filter((item) => item.id !== product.id));
+    setSelected(product);
+    navigate("content");
+  }
+
+  async function rejectRecommendation(product: SupplierProduct) {
+    setLoading(true);
+    try {
+      await request<SupplierProduct>(
+        `/api/v1/supplier-products/${product.id}/status?product_status=rejected`,
+        { method: "PATCH" },
+      );
+      setRecommendations((current) => current.filter((item) => item.id !== product.id));
+      if (selected?.id === product.id) {
+        setSelected(null);
+      }
+      setMessage("Товар убран из текущих рекомендаций. После нового анализа его можно будет вернуть в отбор.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка отклонения рекомендации");
     } finally {
       setLoading(false);
     }
@@ -575,23 +627,28 @@ function App() {
           <div className="panel recommendations">
             <div className="panel-title">
               <h2>Топ рекомендаций</h2>
-              <span>показано {recommendations.length} из 10, только товары из прайса Звезда</span>
+              <span>готово {recommendations.length} из 10: только товары Звезды с продажами и выручкой MPStats</span>
             </div>
             <div className="recommendation-list">
               {recommendations.map((product, index) => (
-                <button
+                <div
                   className="recommendation-row"
                   key={product.id}
-                  onClick={() => setSelected(product)}
                 >
-                  <strong>{index + 1}</strong>
-                  <span>{product.name}</span>
+                  <button className="recommendation-main" onClick={() => setSelected(product)}>
+                    <strong>{index + 1}</strong>
+                    <span>{product.name}</span>
+                  </button>
                   <em>{product.launch_score ? `оценка ${product.launch_score.toFixed(2)}` : "нужен анализ"}</em>
                   <small>{recommendationReason(product)}</small>
-                </button>
+                  <div className="approval-actions">
+                    <button onClick={() => approveRecommendation(product)} disabled={loading}>Согласовано</button>
+                    <button onClick={() => rejectRecommendation(product)} disabled={loading}>Не согласовано</button>
+                  </div>
+                </div>
               ))}
               {!recommendations.length ? (
-                <div className="empty">Топ появится после MPStats-анализа товаров.</div>
+                <div className="empty">Нет подтвержденных рекомендаций. Нужен анализ прайса с продажами и выручкой, без цифр товар в топ не попадает.</div>
               ) : null}
             </div>
           </div>
@@ -655,11 +712,57 @@ function App() {
                 <div className="job-actions">
                   {job.actions.map((action) => (
                     <div key={action.action_id}>
-                      <span>{action.asset_type}</span>
+                      <span>{formatAssetType(action.asset_type)}</span>
                       <em>{formatJobStatus(action.status)}</em>
                       {action.result_url ? <a href={action.result_url} target="_blank">Открыть</a> : null}
                     </div>
                   ))}
+                </div>
+                <div className="revision-box">
+                  <strong>Правки через GPT</strong>
+                  <textarea
+                    value={revisionInputs[job.job_id] ?? ""}
+                    onChange={(event) =>
+                      setRevisionInputs((current) => ({ ...current, [job.job_id]: event.target.value }))
+                    }
+                    placeholder="Например: сделай главное фото светлее, добавь крупный план деталей, перепиши описание проще, подготовь дополнительное видео с коробкой и моделью."
+                  />
+                  <div className="revision-actions">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRevisionInputs((current) => ({
+                          ...current,
+                          [job.job_id]: `${current[job.job_id] ?? ""} Исправить фото: сделать товар крупнее, фон чище, убрать лишние элементы.`.trim(),
+                        }))
+                      }
+                    >
+                      Фото
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRevisionInputs((current) => ({
+                          ...current,
+                          [job.job_id]: `${current[job.job_id] ?? ""} Исправить описание: сделать текст понятнее, добавить выгоды и не выдумывать характеристики.`.trim(),
+                        }))
+                      }
+                    >
+                      Описание
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRevisionInputs((current) => ({
+                          ...current,
+                          [job.job_id]: `${current[job.job_id] ?? ""} Добавить доп. фото и видео: показать упаковку, комплектацию, детали и масштаб товара.`.trim(),
+                        }))
+                      }
+                    >
+                      Фото и видео
+                    </button>
+                    <button onClick={() => reviseJob(job.job_id)} disabled={loading}>Отправить правки</button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -834,6 +937,22 @@ function formatMoney(value?: string | number | null) {
     return "нет данных";
   }
   return `${number.toFixed(0)} ₽`;
+}
+
+function defaultContentAssets(): ContentAssetType[] {
+  return ["main_photo", "infographic", "advantages", "usage", "video"];
+}
+
+function formatAssetType(assetType: string) {
+  const names: Record<string, string> = {
+    main_photo: "Главное фото",
+    infographic: "Инфографика",
+    advantages: "Преимущества",
+    usage: "Применение",
+    comparison: "Сравнение",
+    video: "Видео",
+  };
+  return names[assetType] ?? assetType;
 }
 
 function formatNumber(value?: string | number | null) {

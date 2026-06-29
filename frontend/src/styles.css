@@ -13,7 +13,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -474,7 +475,7 @@ dd {
 
 .recommendation-row {
   display: grid;
-  grid-template-columns: 42px 1fr auto;
+  grid-template-columns: 1fr auto;
   gap: 10px;
   text-align: left;
   align-items: center;
@@ -482,9 +483,38 @@ dd {
   padding: 10px;
 }
 
+.recommendation-main {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
 .recommendation-row small {
-  grid-column: 2 / 4;
+  grid-column: 1 / 3;
   color: #667085;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / 3;
+}
+
+.approval-actions button {
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.approval-actions button:first-child {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
 }
 
 .card-draft {
@@ -513,6 +543,42 @@ dd {
   padding: 4px 8px;
   background: #ffffff;
   font-size: 13px;
+}
+
+.revision-box {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.revision-box textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid #cfd6dd;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.revision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.revision-actions button {
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.revision-actions button:last-child {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
 }
 
 .empty {

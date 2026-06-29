@@ -16,6 +16,7 @@ from .models import (
     ProductListResponse,
     ProductStatsResponse,
     SupplierProduct,
+    ProductStatus,
     WorkbookImportResult,
 )
 from .parser import parse_price_list
@@ -113,6 +114,13 @@ class SupplierProductService:
 
     async def get_analysis(self, product_id: UUID) -> ProductAnalysis | None:
         return await self._repository.get_analysis(product_id)
+
+    async def update_status(self, product_id: UUID, status: ProductStatus) -> SupplierProduct | None:
+        product = await self._repository.get_product(product_id)
+        if product is None:
+            return None
+        await self._repository.update_product_status(product_id, status)
+        return await self._repository.get_product(product_id)
 
     async def analyze_product(self, product_id: UUID) -> ProductAnalysis | None:
         product = await self._repository.get_product(product_id)
