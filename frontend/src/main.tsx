@@ -16,6 +16,8 @@ import "./styles.css";
 const RENDER_API_URL = "https://wb-product-factory-api.onrender.com";
 const LOCAL_API_URL = "http://127.0.0.1:8000";
 const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
+const ZVEZDA_PRICE_URL =
+  "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing";
 const isLocalFrontend =
   typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const DEFAULT_API_URL = import.meta.env.VITE_API_URL ?? (isLocalFrontend ? LOCAL_API_URL : RENDER_API_URL);
@@ -126,7 +128,7 @@ function App() {
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<SupplierProduct | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [sheetUrl, setSheetUrl] = useState("");
+  const [sheetUrl, setSheetUrl] = useState(ZVEZDA_PRICE_URL);
   const [message, setMessage] = useState("");
   const [jobs, setJobs] = useState<ContentJob[]>([]);
   const [analysisState, setAnalysisState] = useState<Record<string, AnalysisState>>({});
