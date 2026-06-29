@@ -166,7 +166,10 @@ type PeriodStats = {
   revenue?: string | number | null;
 };
 
+type Page = "price" | "products" | "analysis" | "content" | "settings";
+
 function App() {
+  const [page, setPage] = useState<Page>(() => pageFromHash(window.location.hash));
   const [apiUrl, setApiUrl] = useState(() => {
     const savedApiUrl = localStorage.getItem(API_URL_STORAGE_KEY);
     return savedApiUrl === LOCAL_API_URL ? DEFAULT_API_URL : savedApiUrl ?? DEFAULT_API_URL;
@@ -198,6 +201,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem(API_URL_STORAGE_KEY, apiUrl);
   }, [apiUrl]);
+
+  useEffect(() => {
+    const onHashChange = () => setPage(pageFromHash(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  function navigate(nextPage: Page) {
+    setPage(nextPage);
+    window.location.hash = nextPage;
+  }
 
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${apiUrl}${path}`, options);
@@ -434,11 +448,11 @@ function App() {
           <span>WB Factory</span>
         </div>
         <nav>
-          <a href="#import"><FileSpreadsheet size={18} /> Прайс</a>
-          <a href="#products"><Search size={18} /> Товары</a>
-          <a href="#analysis"><BarChart3 size={18} /> Анализ</a>
-          <a href="#content"><ImagePlus size={18} /> Контент</a>
-          <a href="#settings"><Settings size={18} /> Интеграции</a>
+          <button className={page === "price" ? "active" : ""} onClick={() => navigate("price")}><FileSpreadsheet size={18} /> Прайс</button>
+          <button className={page === "products" ? "active" : ""} onClick={() => navigate("products")}><Search size={18} /> Товары</button>
+          <button className={page === "analysis" ? "active" : ""} onClick={() => navigate("analysis")}><BarChart3 size={18} /> Анализ</button>
+          <button className={page === "content" ? "active" : ""} onClick={() => navigate("content")}><ImagePlus size={18} /> Контент</button>
+          <button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Settings size={18} /> Интеграции</button>
         </nav>
       </aside>
 
@@ -455,14 +469,14 @@ function App() {
 
         {message ? <div className="notice">{message}</div> : null}
 
-        <section className="metrics" id="dashboard">
+        <section className="metrics">
           <Metric label="Товаров в прайсе" value={stats.products} />
           <Metric label="Нет в продаже" value={stats.missing} />
           <Metric label="Контент в работе" value={stats.contentRunning} />
           <Metric label="Контент готов" value={stats.contentReady} />
         </section>
 
-        <section className="panel" id="import">
+        {page === "price" ? <section className="panel page-panel">
           <div className="panel-title">
             <h2>Импорт прайса Звезда</h2>
             <span>CSV/XLSX или публичная ссылка Google Sheets</span>
@@ -485,10 +499,10 @@ function App() {
             />
             <button onClick={importUrl} disabled={loading}>Импортировать URL</button>
           </div>
-        </section>
+        </section> : null}
 
-        <section className="workspace">
-          <div className="panel product-list" id="products">
+        {page === "products" ? <section className="workspace page-panel">
+          <div className="panel product-list">
             <div className="panel-title">
               <h2>Товары</h2>
               <span>{total} позиций</span>
@@ -548,35 +562,75 @@ function App() {
               </>
             ) : null}
           </div>
-        </section>
+        </section> : null}
 
-        <section className="panel recommendations" id="analysis">
-          <div className="panel-title">
-            <h2>Топ-10 рекомендаций</h2>
-            <span>только товары из прайса Звезда</span>
+        {page === "analysis" ? <section className="analysis-page page-panel">
+          <div className="panel recommendations">
+            <div className="panel-title">
+              <h2>Топ-10 рекомендаций</h2>
+              <span>только товары из прайса Звезда</span>
+            </div>
+            <div className="recommendation-list">
+              {recommendations.map((product, index) => (
+                <button
+                  className="recommendation-row"
+                  key={product.id}
+                  onClick={() => setSelected(product)}
+                >
+                  <strong>{index + 1}</strong>
+                  <span>{product.name}</span>
+                  <em>оценка {product.launch_score?.toFixed(2)}</em>
+                  <small>{recommendationReason(product)}</small>
+                </button>
+              ))}
+              {!recommendations.length ? (
+                <div className="empty">Топ появится после MPStats-анализа товаров.</div>
+              ) : null}
+            </div>
           </div>
-          <div className="recommendation-list">
-            {recommendations.map((product, index) => (
-              <button
-                className="recommendation-row"
-                key={product.id}
-                onClick={() => setSelected(product)}
-              >
-                <strong>{index + 1}</strong>
-                <span>{product.name}</span>
-                <em>оценка {product.launch_score?.toFixed(2)}</em>
-                <small>{recommendationReason(product)}</small>
-              </button>
-            ))}
-            {!recommendations.length ? (
-              <div className="empty">Топ появится после MPStats-анализа товаров.</div>
+          <div className="panel">
+            <div className="panel-title">
+              <h2>{selected ? selected.name : "Товар не выбран"}</h2>
+              <span>{selected ? formatProductStatus(selected.status) : "выберите товар"}</span>
+            </div>
+            {selected ? (
+              <>
+                <div className="product-card compact">
+                  {selected.photo_urls[0] ? <img src={selected.photo_urls[0]} alt={selected.name} /> : <div className="no-photo">Нет фото</div>}
+                  <dl>
+                    <dt>Артикул</dt><dd>{selected.sku ?? "не указан"}</dd>
+                    <dt>Закупка</dt><dd>{selected.wholesale_price ? `${selected.wholesale_price} ₽` : "не указана"}</dd>
+                    <dt>Размер</dt><dd>{selected.dimensions ?? selected.description ?? "не указан"}</dd>
+                    <dt>В коробке</dt><dd>{selected.pack_units ?? "не указано"}</dd>
+                  </dl>
+                </div>
+                <div className="actions">
+                  <button onClick={() => analyzeProduct(selected)} disabled={loading}>
+                    {analysisState[selected.id]?.status === "running" ? "Анализ идет..." : "Пересчитать анализ"}
+                  </button>
+                  <button onClick={() => generateContent(selected)} disabled={loading}>
+                    Сгенерировать карточку
+                  </button>
+                </div>
+                {(() => {
+                  const currentAnalysis = analysisState[selected.id];
+                  return currentAnalysis ? (
+                    <div className={`analysis-status ${currentAnalysis.status}`}>
+                      <strong>{currentAnalysis.message}</strong>
+                      {currentAnalysis.details ? <AnalysisDetails analysis={currentAnalysis.details} /> : null}
+                    </div>
+                  ) : (
+                    <div className="empty">Для товара еще нет анализа. Нажмите “Пересчитать анализ”.</div>
+                  );
+                })()}
+              </>
             ) : null}
           </div>
-        </section>
+        </section> : null}
 
-        <section className="panel" id="content">
+        {page === "content" ? <section className="panel page-panel">
           <div className="panel-title">
-            <h2>Генерации контента</h2>
+            <h2>Генерация контента и история</h2>
             <button onClick={generateRecommendedContent} disabled={loading}>
               Сгенерировать топ-рекомендации
             </button>
@@ -604,9 +658,9 @@ function App() {
             ))}
             {!jobs.length ? <div className="empty">Задач генерации пока нет.</div> : null}
           </div>
-        </section>
+        </section> : null}
 
-        <section className="panel" id="settings">
+        {page === "settings" ? <section className="panel page-panel">
           <div className="panel-title">
             <h2>Интеграции</h2>
             <span>{apiUrl.includes("127.0.0.1") || apiUrl.includes("localhost") ? "Локальный API" : "Render API"}</span>
@@ -630,7 +684,7 @@ function App() {
             <Status label="GPT" ok={integrations?.openai} />
             <Status label="Gemini" ok={integrations?.gemini} />
           </div>
-        </section>
+        </section> : null}
       </main>
     </div>
   );
@@ -667,8 +721,8 @@ function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
       <dl className="analysis-grid">
         <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
         <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)} <small>мин / средняя / макс</small></dd>
-        <dt>Продажи</dt><dd>{formatNumber(analysis.estimated_sales)} <small>{period?.sales_basis ?? "сумма по конкурентам за период"}</small></dd>
-        <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)} <small>{period?.revenue_basis ?? "сумма по конкурентам за период"}</small></dd>
+        <dt>Продажи за 30 дней</dt><dd>{formatNumber(analysis.estimated_sales)} <small>{period?.sales_basis ?? "сумма по конкурентам за 30 дней"}</small></dd>
+        <dt>Выручка за 30 дней</dt><dd>{formatMoney(analysis.estimated_revenue)} <small>{period?.revenue_basis ?? "сумма по конкурентам за 30 дней"}</small></dd>
         <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)} <small>{period?.margin_basis ?? "по средней цене рынка, без расходов WB"}</small></dd>
         <dt>Оценка запуска</dt><dd>{analysis.launch_score ?? "нет данных"} из 100 <small>чем выше, тем интереснее товар: учитываем маржу, спрос и количество конкурентов</small></dd>
         <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
@@ -821,6 +875,28 @@ function formatEntityName(value?: string | { name?: string | null } | null) {
     return value;
   }
   return value.name ?? "нет данных";
+}
+
+function pageFromHash(hash: string): Page {
+  const page = hash.replace("#", "");
+  if (["price", "products", "analysis", "content", "settings"].includes(page)) {
+    return page as Page;
+  }
+  return "price";
+}
+
+function formatProductStatus(status?: string | null) {
+  const statuses: Record<string, string> = {
+    new: "новый",
+    missing_on_wb: "нет в продаже",
+    listed: "в продаже",
+    analysis_pending: "анализируется",
+    analyzed: "проанализирован",
+    content_pending: "контент в работе",
+    content_ready: "контент готов",
+    rejected: "отклонен",
+  };
+  return status ? statuses[status] ?? status : "нет статуса";
 }
 
 function formatJobStatus(status?: string | null) {

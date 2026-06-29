@@ -54,17 +54,20 @@ button:disabled {
   gap: 6px;
 }
 
-.sidebar a {
+.sidebar button {
   display: flex;
   align-items: center;
   gap: 10px;
   color: #d1d5db;
   padding: 10px;
-  text-decoration: none;
+  border: 0;
+  background: transparent;
   border-radius: 8px;
+  text-align: left;
 }
 
-.sidebar a:hover {
+.sidebar button:hover,
+.sidebar button.active {
   background: #1f2937;
   color: #ffffff;
 }
@@ -197,6 +200,16 @@ header p,
   gap: 18px;
 }
 
+.page-panel {
+  min-width: 0;
+}
+
+.analysis-page {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.75fr) minmax(520px, 1.25fr);
+  gap: 18px;
+}
+
 .table {
   display: grid;
   max-height: 560px;
@@ -222,6 +235,16 @@ header p,
   display: grid;
   grid-template-columns: 180px 1fr;
   gap: 18px;
+}
+
+.product-card.compact {
+  grid-template-columns: 140px 1fr;
+  margin-bottom: 12px;
+}
+
+.product-card.compact img,
+.product-card.compact .no-photo {
+  width: 140px;
 }
 
 .analysis-status {
@@ -441,7 +464,7 @@ dd {
 }
 
 .recommendations {
-  order: 3;
+  min-width: 0;
 }
 
 .recommendation-list {
@@ -555,7 +578,8 @@ dd {
 
 @media (max-width: 980px) {
   .app,
-  .workspace {
+  .workspace,
+  .analysis-page {
     grid-template-columns: 1fr;
   }
 
