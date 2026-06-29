@@ -18,9 +18,7 @@ const LOCAL_API_URL = "http://127.0.0.1:8000";
 const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
 const ZVEZDA_PRICE_URL =
   "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing";
-const isLocalFrontend =
-  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
-const DEFAULT_API_URL = import.meta.env.VITE_API_URL ?? (isLocalFrontend ? LOCAL_API_URL : RENDER_API_URL);
+const DEFAULT_API_URL = import.meta.env.VITE_API_URL ?? RENDER_API_URL;
 
 type Integrations = {
   supabase: boolean;
@@ -121,7 +119,10 @@ type ProductAnalysis = {
 };
 
 function App() {
-  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem(API_URL_STORAGE_KEY) ?? DEFAULT_API_URL);
+  const [apiUrl, setApiUrl] = useState(() => {
+    const savedApiUrl = localStorage.getItem(API_URL_STORAGE_KEY);
+    return savedApiUrl === LOCAL_API_URL ? DEFAULT_API_URL : savedApiUrl ?? DEFAULT_API_URL;
+  });
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [productStats, setProductStats] = useState<ProductStatsResponse | null>(null);
@@ -526,8 +527,8 @@ function App() {
           </div>
           {!integrations?.mpstats_api ? (
             <div className="hint">
-              MPStats API не подключен на выбранном backend. Для Render добавь переменную MPSTATS_TOKEN,
-              для локальной проверки выбери “Локально”.
+              MPStats API нужен для нового анализа продаж. Генерация карточек работает через Aidentika.
+              Для полного анализа добавь MPSTATS_TOKEN в Render.
             </div>
           ) : null}
           <div className="status-grid">
