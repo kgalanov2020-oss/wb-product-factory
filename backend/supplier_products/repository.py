@@ -8,6 +8,7 @@ from supabase import Client, create_client
 
 from backend.config import Settings
 
+from .analysis import ANALYSIS_VERSION
 from .exceptions import SupplierProductRepositoryError
 from .models import (
     ProductAnalysis,
@@ -305,9 +306,10 @@ class SupabaseSupplierProductRepository:
     async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]:
         def select_analyzed() -> list[dict]:
             query = (
-                self._client.table(self._products_table)
-                .select("*")
-                .eq("status", "analyzed")
+                self._client.table(self._analyses_table)
+                .select("product_id,launch_score,raw,status")
+                .eq("status", "completed")
+                .contains("raw", {"analysis_version": ANALYSIS_VERSION})
                 .order("launch_score", desc=True)
                 .limit(max(limit * 5, 20))
             )
@@ -315,6 +317,19 @@ class SupabaseSupplierProductRepository:
                 query = query.gte("launch_score", min_score)
             response = query.execute()
             return response.data or []
+
+        def select_products_by_ids(product_ids: list[str]) -> list[dict]:
+            if not product_ids:
+                return []
+            response = (
+                self._client.table(self._products_table)
+                .select("*")
+                .in_("id", product_ids)
+                .execute()
+            )
+            rows = response.data or []
+            order = {product_id: index for index, product_id in enumerate(product_ids)}
+            return sorted(rows, key=lambda row: order.get(str(row.get("id")), len(order)))
 
         def select_fillers() -> list[dict]:
             query = (
@@ -328,7 +343,9 @@ class SupabaseSupplierProductRepository:
             return response.data or []
 
         try:
-            rows = await asyncio.to_thread(select_analyzed)
+            analysis_rows = await asyncio.to_thread(select_analyzed)
+            product_ids = [str(row["product_id"]) for row in analysis_rows if row.get("product_id")]
+            rows = await asyncio.to_thread(lambda: select_products_by_ids(product_ids))
             if min_score <= 0 and len(rows) < limit:
                 rows.extend(await asyncio.to_thread(select_fillers))
         except Exception as exc:

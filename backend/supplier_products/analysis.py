@@ -15,6 +15,7 @@ PRICE_KEYS = ("price", "цена", "стоимость")
 SALES_KEYS = ("sales", "sale", "продаж", "выкуп")
 REVENUE_KEYS = ("revenue", "выруч", "оборот")
 MAX_ESTIMATED_SALES = 2_000_000_000
+ANALYSIS_VERSION = "zvezda_relevance_v2"
 
 
 def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -> ProductAnalysis:
@@ -60,6 +61,7 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
         launch_score=score,
         notes=source_note,
         raw={
+            "analysis_version": ANALYSIS_VERSION,
             "analysis_period": {
                 "label": "последние 30 дней",
                 "date_from": (datetime.now(timezone.utc).date() - timedelta(days=31)).isoformat(),

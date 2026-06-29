@@ -19,6 +19,7 @@ const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
 const ZVEZDA_PRICE_URL =
   "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing";
 const DEFAULT_API_URL = import.meta.env.VITE_API_URL ?? RENDER_API_URL;
+const CURRENT_ANALYSIS_VERSION = "zvezda_relevance_v2";
 
 type Integrations = {
   supabase: boolean;
@@ -128,6 +129,7 @@ type ProductAnalysis = {
   launch_score?: number | null;
   notes?: string | null;
   raw?: {
+    analysis_version?: string;
     analysis_period?: {
       label?: string;
       date_from?: string;
@@ -391,6 +393,16 @@ function App() {
     }
     try {
       const analysis = await request<ProductAnalysis>(`/api/v1/supplier-products/${product.id}/analysis`);
+      if (analysis.raw?.analysis_version !== CURRENT_ANALYSIS_VERSION) {
+        setAnalysisState((current) => ({
+          ...current,
+          [product.id]: {
+            status: "failed",
+            message: "Этот анализ устарел и мог быть посчитан по широкой выдаче MPStats. Нажмите “Пересчитать анализ”.",
+          },
+        }));
+        return;
+      }
       const analysisStatus =
         analysis.status === "completed" ? "completed" : analysis.status === "failed" ? "failed" : "running";
       const analysisMessage =
