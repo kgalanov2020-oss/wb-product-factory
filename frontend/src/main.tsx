@@ -166,6 +166,10 @@ type PeriodStats = {
   revenue?: string | number | null;
 };
 
+type Competitor = NonNullable<
+  NonNullable<NonNullable<ProductAnalysis["raw"]>["mpstats_snapshot"]>["competitors"]
+>[number];
+
 type Page = "price" | "products" | "analysis" | "content" | "settings";
 
 function App() {
@@ -745,7 +749,8 @@ function PeriodRollups({ analysis }: { analysis: ProductAnalysis }) {
   }
   return (
     <div className="period-table">
-      <strong>Продажи и выручка по рынку</strong>
+      <strong>Продажи по периодам</strong>
+      <small>Сумма по релевантным конкурентам MPStats: штуки и деньги отдельно за каждый период.</small>
       <div className="period-row head">
         <span>Период</span>
         <span>Штуки</span>
@@ -766,9 +771,12 @@ function PeriodRollups({ analysis }: { analysis: ProductAnalysis }) {
 }
 
 function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
-  const competitors = analysis.raw?.mpstats_snapshot?.competitors?.slice(0, 10) ?? [];
+  const competitors = (analysis.raw?.mpstats_snapshot?.competitors ?? [])
+    .filter(hasAnyPeriodData)
+    .sort((left, right) => competitorRevenue(right) - competitorRevenue(left))
+    .slice(0, 10);
   if (!competitors.length) {
-    return null;
+    return <div className="empty">MPStats нашел конкурентов, но не вернул по ним продажи и выручку. Такой список не используем для решения.</div>;
   }
   return (
     <div className="competitors">
@@ -790,6 +798,23 @@ function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function hasAnyPeriodData(competitor: Competitor) {
+  return ["week", "month", "quarter", "year_to_date"].some((period) => {
+    const item = competitor.periods?.[period];
+    return Number(item?.sales ?? 0) > 0 || Number(item?.revenue ?? 0) > 0;
+  });
+}
+
+function competitorRevenue(competitor: Competitor) {
+  return Number(
+    competitor.periods?.year_to_date?.revenue ??
+      competitor.periods?.quarter?.revenue ??
+      competitor.periods?.month?.revenue ??
+      competitor.revenue ??
+      0,
   );
 }
 
