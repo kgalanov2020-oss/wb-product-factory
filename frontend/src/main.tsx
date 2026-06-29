@@ -564,7 +564,7 @@ function App() {
               >
                 <strong>{index + 1}</strong>
                 <span>{product.name}</span>
-                <em>score {product.launch_score?.toFixed(2)}</em>
+                <em>оценка {product.launch_score?.toFixed(2)}</em>
                 <small>{recommendationReason(product)}</small>
               </button>
             ))}
@@ -670,7 +670,7 @@ function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
         <dt>Продажи</dt><dd>{formatNumber(analysis.estimated_sales)} <small>{period?.sales_basis ?? "сумма по конкурентам за период"}</small></dd>
         <dt>Выручка</dt><dd>{formatMoney(analysis.estimated_revenue)} <small>{period?.revenue_basis ?? "сумма по конкурентам за период"}</small></dd>
         <dt>Маржа</dt><dd>{formatPercent(analysis.margin_percent)} <small>{period?.margin_basis ?? "по средней цене рынка, без расходов WB"}</small></dd>
-        <dt>Score</dt><dd>{analysis.launch_score ?? "нет данных"} <small>{period?.score_basis ?? "маржа + конкуренция + спрос"}</small></dd>
+        <dt>Оценка запуска</dt><dd>{analysis.launch_score ?? "нет данных"} из 100 <small>чем выше, тем интереснее товар: учитываем маржу, спрос и количество конкурентов</small></dd>
         <dt>Вывод</dt><dd>{analysis.notes ?? "нет"}</dd>
       </dl>
       <TopCompetitors analysis={analysis} />
@@ -740,7 +740,7 @@ function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
 }
 
 function analysisSummary(analysis: ProductAnalysis) {
-  return `Анализ готов: ${analysis.competitor_count ?? 0} конкурентов, средняя цена ${formatMoney(analysis.market_price_avg)}, маржа ${formatPercent(analysis.margin_percent)}, score ${analysis.launch_score ?? "нет данных"}.`;
+  return `Анализ готов: ${analysis.competitor_count ?? 0} конкурентов, средняя цена ${formatMoney(analysis.market_price_avg)}, маржа ${formatPercent(analysis.margin_percent)}, оценка запуска ${analysis.launch_score ?? "нет данных"} из 100.`;
 }
 
 function formatMoney(value?: string | number | null) {
@@ -779,7 +779,7 @@ function formatPriceRange(analysis: ProductAnalysis) {
 function recommendationReason(product: SupplierProduct) {
   const reasons = [
     product.status === "analyzed" ? "есть анализ MPStats" : null,
-    product.launch_score ? `score ${product.launch_score.toFixed(2)}` : null,
+    product.launch_score ? `оценка запуска ${product.launch_score.toFixed(2)} из 100` : null,
     product.wholesale_price ? `закупка ${formatMoney(product.wholesale_price)}` : null,
     product.photo_urls.length || product.source_url ? "есть фото/ссылка Звезды" : "нет фото",
   ].filter(Boolean);
