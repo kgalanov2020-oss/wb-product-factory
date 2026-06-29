@@ -308,22 +308,51 @@ header p,
   background: rgba(255, 255, 255, 0.55);
 }
 
-.competitors dl {
-  grid-template-columns: repeat(6, auto 1fr);
-  gap: 4px 8px;
-  font-size: 13px;
-  margin-top: 6px;
-}
-
-.competitors dt,
-.competitors dd {
-  min-width: 0;
-}
-
 .competitors em {
   color: #667085;
   font-style: normal;
   font-size: 14px;
+}
+
+.competitor-metrics,
+.period-table {
+  display: grid;
+  gap: 6px;
+}
+
+.competitor-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.competitor-metrics span {
+  color: #667085;
+}
+
+.competitor-metrics b {
+  color: #1b1f23;
+  font-weight: 600;
+}
+
+.period-table {
+  margin-bottom: 12px;
+  border: 1px solid #dce3ea;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 8px;
+}
+
+.period-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 140px;
+  gap: 10px;
+  align-items: center;
+}
+
+.period-row.head {
+  color: #667085;
+  font-size: 13px;
 }
 
 .product-card img,

@@ -138,6 +138,7 @@ type ProductAnalysis = {
       margin_basis?: string;
       score_basis?: string;
     };
+    period_rollups?: Record<string, PeriodStats>;
     mpstats_snapshot?: {
       competitors?: Array<{
         name?: string | null;
@@ -151,9 +152,18 @@ type ProductAnalysis = {
         feedbacks?: string | number | null;
         stock?: string | number | null;
         url?: string | null;
+        periods?: Record<string, PeriodStats>;
       }>;
     };
   };
+};
+
+type PeriodStats = {
+  label?: string;
+  date_from?: string | null;
+  date_to?: string | null;
+  sales?: string | number | null;
+  revenue?: string | number | null;
 };
 
 function App() {
@@ -427,6 +437,7 @@ function App() {
           <a href="#dashboard"><BarChart3 size={18} /> Dashboard</a>
           <a href="#import"><FileSpreadsheet size={18} /> Прайс</a>
           <a href="#products"><Search size={18} /> Товары</a>
+          <a href="#analysis"><BarChart3 size={18} /> Анализ</a>
           <a href="#content"><ImagePlus size={18} /> Контент</a>
           <a href="#settings"><Settings size={18} /> Интеграции</a>
         </nav>
@@ -540,10 +551,10 @@ function App() {
           </div>
         </section>
 
-        <section className="panel recommendations">
+        <section className="panel recommendations" id="analysis">
           <div className="panel-title">
             <h2>Топ-10 рекомендаций</h2>
-            <span>по score запуска</span>
+            <span>только товары из прайса Звезда</span>
           </div>
           <div className="recommendation-list">
             {recommendations.map((product, index) => (
@@ -653,6 +664,7 @@ function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
         <strong>Период: {period?.label ?? "последние 30 дней"}</strong>
         <span>{period?.date_from && period?.date_to ? `${period.date_from} - ${period.date_to}` : "MPStats-снимок за доступный период"}</span>
       </div>
+      <PeriodRollups analysis={analysis} />
       <dl className="analysis-grid">
         <dt>Конкуренты</dt><dd>{analysis.competitor_count ?? "нет данных"}</dd>
         <dt>Цена рынка</dt><dd>{formatPriceRange(analysis)} <small>мин / средняя / макс</small></dd>
@@ -664,6 +676,39 @@ function AnalysisDetails({ analysis }: { analysis: ProductAnalysis }) {
       </dl>
       <TopCompetitors analysis={analysis} />
     </>
+  );
+}
+
+function PeriodRollups({ analysis }: { analysis: ProductAnalysis }) {
+  const rollups = analysis.raw?.period_rollups ?? {};
+  const periods = [
+    ["week", "7 дней"],
+    ["month", "30 дней"],
+    ["quarter", "90 дней"],
+    ["year_to_date", "с начала года"],
+  ] as const;
+  if (!Object.keys(rollups).length) {
+    return null;
+  }
+  return (
+    <div className="period-table">
+      <strong>Продажи и выручка по рынку</strong>
+      <div className="period-row head">
+        <span>Период</span>
+        <span>Штуки</span>
+        <span>Деньги</span>
+      </div>
+      {periods.map(([key, fallbackLabel]) => {
+        const item = rollups[key];
+        return (
+          <div className="period-row" key={key}>
+            <span>{item?.label ?? fallbackLabel}</span>
+            <span>{formatNumber(item?.sales)}</span>
+            <span>{formatMoney(item?.revenue)}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -679,14 +724,16 @@ function TopCompetitors({ analysis }: { analysis: ProductAnalysis }) {
         <div key={`${competitor.nm_id ?? index}-${competitor.name ?? ""}`}>
           <span>{index + 1}. {competitor.name ?? "Без названия"}</span>
           <em>{formatEntityName(competitor.brand)} / {formatEntityName(competitor.supplier)}</em>
-          <dl>
-            <dt>Цена</dt><dd>{formatMoney(competitor.price)}</dd>
-            <dt>Продажи</dt><dd>{formatNumber(competitor.sales)}</dd>
-            <dt>Выручка</dt><dd>{formatMoney(competitor.revenue)}</dd>
-            <dt>Отзывы</dt><dd>{formatNumber(competitor.feedbacks)}</dd>
-            <dt>Остаток</dt><dd>{formatNumber(competitor.stock)}</dd>
-            <dt>WB</dt><dd>{competitor.url ? <a href={competitor.url} target="_blank">Открыть</a> : competitor.nm_id ?? "нет данных"}</dd>
-          </dl>
+          <div className="competitor-metrics">
+            <span>Цена <b>{formatMoney(competitor.price)}</b></span>
+            <span>7д <b>{formatNumber(competitor.periods?.week?.sales)}</b> / <b>{formatMoney(competitor.periods?.week?.revenue)}</b></span>
+            <span>30д <b>{formatNumber(competitor.periods?.month?.sales)}</b> / <b>{formatMoney(competitor.periods?.month?.revenue)}</b></span>
+            <span>90д <b>{formatNumber(competitor.periods?.quarter?.sales)}</b> / <b>{formatMoney(competitor.periods?.quarter?.revenue)}</b></span>
+            <span>YTD <b>{formatNumber(competitor.periods?.year_to_date?.sales)}</b> / <b>{formatMoney(competitor.periods?.year_to_date?.revenue)}</b></span>
+            <span>Отзывы <b>{formatNumber(competitor.feedbacks)}</b></span>
+            <span>Остаток <b>{formatNumber(competitor.stock)}</b></span>
+            <span>{competitor.url ? <a href={competitor.url} target="_blank">Открыть WB</a> : competitor.nm_id ?? "нет данных"}</span>
+          </div>
         </div>
       ))}
     </div>

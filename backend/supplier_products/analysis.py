@@ -18,21 +18,18 @@ MAX_ESTIMATED_SALES = 2_000_000_000
 
 
 def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -> ProductAnalysis:
-    analysis_data = snapshot.competitors or {
-        "prices": snapshot.prices,
-        "sales": snapshot.sales,
-        "revenue": snapshot.revenue,
-    }
-    prices = _numbers_by_keys(analysis_data, PRICE_KEYS)
-    sales = _numbers_by_keys(analysis_data, SALES_KEYS)
-    revenue = _numbers_by_keys(analysis_data, REVENUE_KEYS)
+    competitors = [item for item in snapshot.competitors if isinstance(item, dict)]
+    prices = [_to_decimal(item.get("price")) for item in competitors]
+    prices = [price for price in prices if price is not None and Decimal("1") <= price <= Decimal("1000000000")]
+    period_rollups = _period_rollups(competitors)
+    month_rollup = period_rollups.get("month", {})
     competitor_count = _competitor_count(snapshot)
 
     market_min = min(prices) if prices else None
     market_avg = sum(prices) / Decimal(len(prices)) if prices else None
     market_max = max(prices) if prices else None
-    estimated_sales = min(int(sum(sales)), MAX_ESTIMATED_SALES) if sales else None
-    estimated_revenue = sum(revenue) if revenue else None
+    estimated_sales = month_rollup.get("sales")
+    estimated_revenue = month_rollup.get("revenue")
     margin = _margin(product.wholesale_price, market_avg)
     score = _launch_score(margin, competitor_count, estimated_sales)
     has_usable_data = any(
@@ -73,6 +70,7 @@ def build_market_analysis(product: SupplierProduct, snapshot: MPStatsSnapshot) -
                 "margin_basis": "грубая маржа = (средняя цена рынка - закупка) / средняя цена рынка; без комиссий WB, логистики, налогов и рекламы",
                 "score_basis": "score = маржа до 45 баллов + низкая конкуренция до 25 баллов + продажи до 30 баллов",
             },
+            "period_rollups": period_rollups,
             "mpstats_snapshot": snapshot.model_dump(mode="json"),
         },
     )
@@ -91,6 +89,44 @@ def _is_wb_public_snapshot(snapshot: MPStatsSnapshot) -> bool:
     if not snapshot.raw_payloads:
         return False
     return any("search.wb.ru" in str(payload.get("url", "")) for payload in snapshot.raw_payloads)
+
+
+def _period_rollups(competitors: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    labels = {
+        "week": "7 дней",
+        "month": "30 дней",
+        "quarter": "90 дней",
+        "year_to_date": "с начала года",
+    }
+    rollups: dict[str, dict[str, Any]] = {}
+    for period_key, label in labels.items():
+        sales_total = 0
+        revenue_total = Decimal("0")
+        sales_found = False
+        revenue_found = False
+        date_from = None
+        date_to = None
+        for competitor in competitors:
+            periods = competitor.get("periods") if isinstance(competitor.get("periods"), dict) else {}
+            period = periods.get(period_key) if isinstance(periods.get(period_key), dict) else {}
+            sales = _to_decimal(period.get("sales"))
+            revenue = _to_decimal(period.get("revenue"))
+            if sales is not None:
+                sales_total += int(sales)
+                sales_found = True
+            if revenue is not None:
+                revenue_total += revenue
+                revenue_found = True
+            date_from = date_from or period.get("date_from")
+            date_to = date_to or period.get("date_to")
+        rollups[period_key] = {
+            "label": label,
+            "date_from": date_from,
+            "date_to": date_to,
+            "sales": min(sales_total, MAX_ESTIMATED_SALES) if sales_found else None,
+            "revenue": revenue_total if revenue_found else None,
+        }
+    return rollups
 
 
 def _numbers_by_keys(data: Any, keys: tuple[str, ...]) -> list[Decimal]:

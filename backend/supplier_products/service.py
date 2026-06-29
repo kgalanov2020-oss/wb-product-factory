@@ -120,7 +120,13 @@ class SupplierProductService:
             return None
         if self._settings is not None and getattr(self._settings, "mpstats_api_configured", False):
             try:
-                snapshot = await collect_mpstats_api_snapshot(self._settings, product.name)
+                snapshot = await collect_mpstats_api_snapshot(
+                    self._settings,
+                    _mpstats_query(product),
+                    product_name=product.name,
+                    product_sku=product.sku,
+                    reference_price=product.wholesale_price,
+                )
             except httpx.HTTPStatusError as exc:
                 analysis = ProductAnalysis(
                     product_id=product.id,
@@ -174,3 +180,11 @@ def _normalize_price_list_url(url: str) -> tuple[str, str | None]:
         f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=xlsx",
         "price.xlsx",
     )
+
+
+def _mpstats_query(product: SupplierProduct) -> str:
+    parts = ["Звезда"]
+    if product.sku:
+        parts.append(product.sku)
+    parts.append(product.name)
+    return " ".join(part for part in parts if part).strip()[:300]
