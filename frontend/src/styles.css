@@ -473,6 +473,25 @@ dd {
   gap: 8px;
 }
 
+.batch-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.batch-controls button {
+  min-height: 42px;
+  border-radius: 8px;
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+}
+
+.batch-controls small {
+  color: #667085;
+  line-height: 1.35;
+}
+
 .recommendation-row {
   display: grid;
   grid-template-columns: 1fr auto;

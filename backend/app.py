@@ -44,6 +44,8 @@ from backend.supplier_products.exceptions import (
     SupplierProductRepositoryError,
 )
 from backend.supplier_products.models import (
+    BatchAnalysisRequest,
+    BatchAnalysisResult,
     PriceListImportRequest,
     PriceListImportResult,
     ProductAnalysis,
@@ -544,6 +546,25 @@ async def analyze_supplier_product(
     if analysis is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return analysis
+
+
+@app.post(
+    "/api/v1/supplier-products/analyze-batch",
+    response_model=BatchAnalysisResult,
+    tags=["supplier-products"],
+)
+async def analyze_supplier_products_batch(
+    payload: BatchAnalysisRequest,
+    request: Request,
+) -> BatchAnalysisResult:
+    try:
+        return await get_supplier_product_service(request).analyze_batch(payload)
+    except SupplierPriceListError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except MPStatsCollectorError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @app.patch(

@@ -46,6 +46,12 @@ class SupplierProductRepository(Protocol):
     async def save_analysis(self, analysis: ProductAnalysis) -> None: ...
 
     async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]: ...
+    async def list_analysis_candidates(
+        self,
+        limit: int,
+        supplier: str,
+        include_rejected: bool,
+    ) -> ProductListResponse: ...
 
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None: ...
 
@@ -82,6 +88,14 @@ class NullSupplierProductRepository:
 
     async def list_recommended_products(self, limit: int, min_score: float) -> list[SupplierProduct]:
         return []
+
+    async def list_analysis_candidates(
+        self,
+        limit: int,
+        supplier: str,
+        include_rejected: bool,
+    ) -> ProductListResponse:
+        return ProductListResponse(products=[], total=0)
 
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
         return None
@@ -350,6 +364,57 @@ class SupabaseSupplierProductRepository:
             and len(product.name.strip()) > 5
             and (product.source_url or product.photo_urls)
         ][:limit]
+
+    async def list_analysis_candidates(
+        self,
+        limit: int,
+        supplier: str,
+        include_rejected: bool,
+    ) -> ProductListResponse:
+        statuses = ["missing_on_wb", "new", "analyzed"]
+        if include_rejected:
+            statuses.append("rejected")
+
+        def select_current_analysis_product_ids() -> set[str]:
+            response = (
+                self._client.table(self._analyses_table)
+                .select("product_id,raw")
+                .execute()
+            )
+            return {
+                str(row["product_id"])
+                for row in response.data or []
+                if row.get("product_id")
+                and isinstance(row.get("raw"), dict)
+                and row["raw"].get("analysis_version") == ANALYSIS_VERSION
+            }
+
+        def select_products(excluded_ids: set[str]) -> tuple[list[dict], int]:
+            query = (
+                self._client.table(self._products_table)
+                .select("*", count="exact")
+                .eq("supplier", supplier)
+                .in_("status", statuses)
+                .order("updated_at", desc=False)
+                .limit(max(limit * 4, limit))
+            )
+            response = query.execute()
+            rows = [
+                row
+                for row in response.data or []
+                if str(row.get("id")) not in excluded_ids
+                and row.get("sku")
+                and row.get("name")
+                and (row.get("source_url") or row.get("photo_urls"))
+            ]
+            return rows[:limit], len(rows)
+
+        try:
+            excluded_ids = await asyncio.to_thread(select_current_analysis_product_ids)
+            rows, total = await asyncio.to_thread(lambda: select_products(excluded_ids))
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+        return ProductListResponse(products=[_product_from_row(row) for row in rows], total=total)
 
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
         try:

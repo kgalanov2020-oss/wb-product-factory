@@ -87,6 +87,22 @@ class ProductAnalysis(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
+class BatchAnalysisRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)
+    supplier: str = "zvezda"
+    include_rejected: bool = True
+
+
+class BatchAnalysisResult(BaseModel):
+    requested: int
+    analyzed: int
+    with_data: int
+    without_data: int
+    errors: int
+    remaining: int
+    products: list[ProductAnalysis] = Field(default_factory=list)
+
+
 class ProductListResponse(BaseModel):
     products: list[SupplierProduct]
     total: int

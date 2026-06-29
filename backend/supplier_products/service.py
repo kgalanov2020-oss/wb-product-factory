@@ -11,6 +11,8 @@ from .analysis import build_market_analysis
 from .exceptions import SupplierPriceListError
 from .mpstats_api import collect_mpstats_api_snapshot
 from .models import (
+    BatchAnalysisRequest,
+    BatchAnalysisResult,
     PriceListImportResult,
     ProductAnalysis,
     ProductListResponse,
@@ -126,6 +128,43 @@ class SupplierProductService:
         product = await self._repository.get_product(product_id)
         if product is None:
             return None
+        return await self._analyze_loaded_product(product)
+
+    async def analyze_batch(self, request: BatchAnalysisRequest) -> BatchAnalysisResult:
+        candidates = await self._repository.list_analysis_candidates(
+            limit=request.limit,
+            supplier=request.supplier,
+            include_rejected=request.include_rejected,
+        )
+        analyses: list[ProductAnalysis] = []
+        with_data = 0
+        without_data = 0
+        errors = 0
+        for product in candidates.products:
+            analysis = await self._analyze_loaded_product(product)
+            analyses.append(analysis)
+            if analysis.status == "completed":
+                with_data += 1
+            elif analysis.status == "failed":
+                without_data += 1
+            else:
+                errors += 1
+        next_candidates = await self._repository.list_analysis_candidates(
+            limit=1,
+            supplier=request.supplier,
+            include_rejected=request.include_rejected,
+        )
+        return BatchAnalysisResult(
+            requested=len(candidates.products),
+            analyzed=len(analyses),
+            with_data=with_data,
+            without_data=without_data,
+            errors=errors,
+            remaining=next_candidates.total,
+            products=analyses,
+        )
+
+    async def _analyze_loaded_product(self, product: SupplierProduct) -> ProductAnalysis:
         if self._settings is not None and getattr(self._settings, "mpstats_api_configured", False):
             try:
                 snapshot = await collect_mpstats_api_snapshot(

@@ -111,6 +111,16 @@ type RecommendedContentResult = {
   jobs: ContentJob[];
 };
 
+type BatchAnalysisResult = {
+  requested: number;
+  analyzed: number;
+  with_data: number;
+  without_data: number;
+  errors: number;
+  remaining: number;
+  products: ProductAnalysis[];
+};
+
 type ContentAssetType = "main_photo" | "infographic" | "advantages" | "usage" | "comparison" | "video";
 
 type AnalysisState = {
@@ -195,6 +205,7 @@ function App() {
   const [message, setMessage] = useState("");
   const [jobs, setJobs] = useState<ContentJob[]>([]);
   const [analysisState, setAnalysisState] = useState<Record<string, AnalysisState>>({});
+  const [batchProgress, setBatchProgress] = useState<BatchAnalysisResult | null>(null);
   const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -387,6 +398,27 @@ function App() {
         ...current,
         [product.id]: { status: "failed", message: errorMessage },
       }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function analyzeBatch() {
+    setLoading(true);
+    setMessage("Запущен пакетный анализ прайса. Проверяем следующую пачку товаров.");
+    try {
+      const result = await request<BatchAnalysisResult>("/api/v1/supplier-products/analyze-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 10, supplier: "zvezda", include_rejected: true }),
+      });
+      setBatchProgress(result);
+      setMessage(
+        `Пачка проверена: ${result.analyzed}. С цифрами: ${result.with_data}. Без данных: ${result.without_data}.`,
+      );
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка пакетного анализа");
     } finally {
       setLoading(false);
     }
@@ -630,6 +662,18 @@ function App() {
             <div className="panel-title">
               <h2>Топ рекомендаций</h2>
               <span>готово {recommendations.length} из 10: только товары Звезды с продажами и выручкой MPStats</span>
+            </div>
+            <div className="batch-controls">
+              <button onClick={analyzeBatch} disabled={loading}>
+                Проанализировать следующую пачку
+              </button>
+              {batchProgress ? (
+                <small>
+                  Проверено: {batchProgress.analyzed}, с цифрами: {batchProgress.with_data}, без данных: {batchProgress.without_data}, еще есть кандидаты: {batchProgress.remaining ? "да" : "нет"}
+                </small>
+              ) : (
+                <small>Запускай пачками, пока топ 10 не заполнится подтвержденными товарами.</small>
+              )}
             </div>
             <div className="recommendation-list">
               {recommendations.map((product, index) => (
