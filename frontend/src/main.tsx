@@ -968,10 +968,10 @@ function App() {
                       <dt>Логика</dt><dd>{item.recommendation_basis ?? item.reason}</dd>
                       <dt>Обоснование</dt><dd>{item.reason}</dd>
                     </dl>
-                    {item.competitors.length ? (
+                    {(item.competitors ?? []).length ? (
                       <div className="pricing-competitors">
                         <strong>Конкуренты</strong>
-                        {item.competitors.slice(0, 5).map((competitor) => (
+                        {(item.competitors ?? []).slice(0, 5).map((competitor) => (
                           <div key={`${item.nm_id}-${competitor.nm_id}`}>
                             <span>{competitor.name ?? "Без названия"}</span>
                             <em>{competitor.seller ?? competitor.brand ?? "нет продавца"}</em>
