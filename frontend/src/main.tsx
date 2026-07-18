@@ -940,7 +940,7 @@ function App() {
                 Проверено: {pricingResult.analyzed}. Рекомендовано поднять: {pricingResult.recommended}. Без изменения: {pricingResult.skipped}.
               </div>
               <div className="pricing-list">
-                {pricingResult.items.map((item) => (
+                {(pricingResult.items ?? []).map((item) => (
                   <article className={`pricing-item ${item.decision}`} key={item.nm_id}>
                     <label>
                       <input
