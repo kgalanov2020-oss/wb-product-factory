@@ -52,6 +52,13 @@ class SupplierProductRepository(Protocol):
         supplier: str,
         include_rejected: bool,
     ) -> ProductListResponse: ...
+    async def list_listed_products_with_stock(
+        self,
+        limit: int,
+        supplier: str,
+        min_stock: int,
+        only_with_stock: bool,
+    ) -> list[dict]: ...
 
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None: ...
 
@@ -96,6 +103,15 @@ class NullSupplierProductRepository:
         include_rejected: bool,
     ) -> ProductListResponse:
         return ProductListResponse(products=[], total=0)
+
+    async def list_listed_products_with_stock(
+        self,
+        limit: int,
+        supplier: str,
+        min_stock: int,
+        only_with_stock: bool,
+    ) -> list[dict]:
+        return []
 
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
         return None
@@ -416,6 +432,83 @@ class SupabaseSupplierProductRepository:
             raise _repository_error(exc) from exc
         return ProductListResponse(products=[_product_from_row(row) for row in rows], total=total)
 
+    async def list_listed_products_with_stock(
+        self,
+        limit: int,
+        supplier: str,
+        min_stock: int,
+        only_with_stock: bool,
+    ) -> list[dict]:
+        def select() -> list[dict]:
+            mapping_response = (
+                self._client.table(self._mappings_table)
+                .select("*")
+                .eq("supplier", supplier)
+                .limit(max(limit * 4, limit))
+                .execute()
+            )
+            mappings = [row for row in mapping_response.data or [] if row.get("wb_article")]
+            wb_articles = [str(row.get("wb_article")) for row in mappings if row.get("wb_article")]
+            stock_by_wb: dict[str, dict] = {}
+            if wb_articles:
+                stock_response = (
+                    self._client.table(self._stocks_table)
+                    .select("*")
+                    .in_("wb_article", wb_articles)
+                    .order("captured_at", desc=True)
+                    .limit(max(len(wb_articles) * 3, 100))
+                    .execute()
+                )
+                for stock in stock_response.data or []:
+                    wb_article = str(stock.get("wb_article") or "")
+                    if wb_article and wb_article not in stock_by_wb:
+                        stock_by_wb[wb_article] = stock
+
+            products_by_key: dict[str, dict] = {}
+            manufacturer_articles = [row.get("manufacturer_article") for row in mappings if row.get("manufacturer_article")]
+            if manufacturer_articles:
+                product_response = (
+                    self._client.table(self._products_table)
+                    .select("*")
+                    .eq("supplier", supplier)
+                    .in_("sku", manufacturer_articles)
+                    .execute()
+                )
+                for product in product_response.data or []:
+                    if product.get("sku"):
+                        products_by_key[str(product["sku"]).strip().lower()] = product
+
+            rows: list[dict] = []
+            seen: set[str] = set()
+            for mapping in mappings:
+                wb_article = str(mapping.get("wb_article") or "")
+                if not wb_article or wb_article in seen:
+                    continue
+                seen.add(wb_article)
+                stock = stock_by_wb.get(wb_article, {})
+                stock_qty = _safe_int(stock.get("stock_qty")) or 0
+                if only_with_stock and stock_qty < min_stock:
+                    continue
+                product = products_by_key.get(str(mapping.get("manufacturer_article") or "").strip().lower(), {})
+                rows.append(
+                    {
+                        **mapping,
+                        "stock_qty": stock_qty,
+                        "stock_raw": stock.get("raw") or {},
+                        "product_name": product.get("name"),
+                        "product_source_url": product.get("source_url"),
+                        "product_photo_urls": product.get("photo_urls") or [],
+                    }
+                )
+                if len(rows) >= limit:
+                    break
+            return rows
+
+        try:
+            return await asyncio.to_thread(select)
+        except Exception as exc:
+            raise _repository_error(exc) from exc
+
     async def update_product_photos(self, product_id: UUID, photo_urls: list[str]) -> None:
         try:
             await asyncio.to_thread(
@@ -483,6 +576,15 @@ def _safe_number(value: object) -> float:
         return float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return 0
+
+
+def _safe_int(value: object) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(float(str(value).replace(",", ".")))
+    except (TypeError, ValueError):
+        return None
 
 
 def _mapping_key(mapping: WBCardMappingInput) -> str:

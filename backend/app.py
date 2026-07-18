@@ -39,6 +39,13 @@ from backend.product_content.repository import (
     SupabaseProductContentRepository,
 )
 from backend.product_content.service import ProductContentService
+from backend.pricing.models import (
+    CrisisPricingRequest,
+    CrisisPricingResult,
+    PriceUploadRequest,
+    PriceUploadResult,
+)
+from backend.pricing.service import CrisisPricingService
 from backend.supplier_products.exceptions import (
     SupplierPriceListError,
     SupplierProductRepositoryError,
@@ -59,6 +66,7 @@ from backend.supplier_products.repository import (
     SupabaseSupplierProductRepository,
 )
 from backend.supplier_products.service import SupplierProductService
+from backend.wb_api.client import WBApiConfigurationError
 
 settings = get_settings()
 
@@ -115,6 +123,7 @@ async def integrations_health() -> dict[str, bool]:
         "openai": settings.openai_configured,
         "gemini": settings.gemini_configured,
         "wb_content": settings.wb_content_configured,
+        "wb_api": settings.wb_api_configured,
     }
 
 
@@ -157,6 +166,13 @@ def get_supplier_product_service(request: Request) -> SupplierProductService:
     return SupplierProductService(
         repository=request.app.state.supplier_product_repository,
         mpstats_service=request.app.state.mpstats_service,
+        settings=settings,
+    )
+
+
+def get_crisis_pricing_service(request: Request) -> CrisisPricingService:
+    return CrisisPricingService(
+        repository=request.app.state.supplier_product_repository,
         settings=settings,
     )
 
@@ -584,3 +600,39 @@ async def update_supplier_product_status(
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return product
+
+
+@app.post(
+    "/api/v1/pricing/crisis/analyze",
+    response_model=CrisisPricingResult,
+    tags=["pricing"],
+)
+async def analyze_crisis_pricing(
+    payload: CrisisPricingRequest,
+    request: Request,
+) -> CrisisPricingResult:
+    try:
+        return await get_crisis_pricing_service(request).analyze(payload)
+    except WBApiConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except SupplierProductRepositoryError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/pricing/crisis/upload",
+    response_model=PriceUploadResult,
+    tags=["pricing"],
+)
+async def upload_crisis_prices(
+    payload: PriceUploadRequest,
+    request: Request,
+) -> PriceUploadResult:
+    try:
+        return await get_crisis_pricing_service(request).upload_prices(payload)
+    except WBApiConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

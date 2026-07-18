@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     wb_content_api_token: SecretStr | None = None
     wb_content_base_url: HttpUrl = HttpUrl("https://content-api.wildberries.ru")
+    wb_api_token: SecretStr | None = None
+    wb_prices_base_url: HttpUrl = HttpUrl("https://discounts-prices-api.wildberries.ru")
+    wb_statistics_base_url: HttpUrl = HttpUrl("https://statistics-api.wildberries.ru")
 
     @property
     def supabase_configured(self) -> bool:
@@ -80,6 +83,14 @@ class Settings(BaseSettings):
     @property
     def wb_content_configured(self) -> bool:
         return bool(self.wb_content_api_token)
+
+    @property
+    def wb_api_configured(self) -> bool:
+        return bool(self.wb_api_token or self.wb_content_api_token)
+
+    @property
+    def wb_api_secret(self) -> SecretStr | None:
+        return self.wb_api_token or self.wb_content_api_token
 
 
 @lru_cache

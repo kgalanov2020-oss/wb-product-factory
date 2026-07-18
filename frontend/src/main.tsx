@@ -4,6 +4,7 @@ import {
   BarChart3,
   Boxes,
   CheckCircle2,
+  DollarSign,
   FileSpreadsheet,
   ImagePlus,
   RefreshCcw,
@@ -29,6 +30,7 @@ type Integrations = {
   openai: boolean;
   gemini: boolean;
   wb_content: boolean;
+  wb_api: boolean;
 };
 
 type SupplierProduct = {
@@ -121,6 +123,50 @@ type BatchAnalysisResult = {
   products: ProductAnalysis[];
 };
 
+type CrisisPricingResult = {
+  requested: number;
+  analyzed: number;
+  recommended: number;
+  skipped: number;
+  items: CrisisPriceRecommendation[];
+};
+
+type CrisisPriceRecommendation = {
+  nm_id: number;
+  vendor_code?: string | null;
+  manufacturer_article?: string | null;
+  name: string;
+  brand?: string | null;
+  subject?: string | null;
+  stock_qty: number;
+  current_price?: string | null;
+  current_discount?: number | null;
+  current_discounted_price?: string | null;
+  competitor_count: number;
+  competitor_price_min?: string | null;
+  competitor_price_median?: string | null;
+  competitor_price_target?: string | null;
+  competitor_price_max?: string | null;
+  orders_30d?: number | null;
+  revenue_30d?: string | null;
+  recommended_price?: string | null;
+  raise_percent?: string | null;
+  expected_discounted_price?: string | null;
+  decision: "recommend_raise" | "hold" | "skip";
+  reason: string;
+  competitors: Array<{
+    nm_id?: number | null;
+    name?: string | null;
+    brand?: string | null;
+    seller?: string | null;
+    price?: string | null;
+    orders_30d?: number | null;
+    revenue_30d?: string | null;
+    stock?: number | null;
+    url?: string | null;
+  }>;
+};
+
 type ContentAssetType = "main_photo" | "infographic" | "advantages" | "usage" | "comparison" | "video";
 
 type AnalysisState = {
@@ -186,7 +232,7 @@ type Competitor = NonNullable<
   NonNullable<NonNullable<ProductAnalysis["raw"]>["mpstats_snapshot"]>["competitors"]
 >[number];
 
-type Page = "price" | "products" | "analysis" | "content" | "settings";
+type Page = "price" | "products" | "analysis" | "pricing" | "content" | "settings";
 
 function App() {
   const [page, setPage] = useState<Page>(() => pageFromHash(window.location.hash));
@@ -206,6 +252,8 @@ function App() {
   const [jobs, setJobs] = useState<ContentJob[]>([]);
   const [analysisState, setAnalysisState] = useState<Record<string, AnalysisState>>({});
   const [batchProgress, setBatchProgress] = useState<BatchAnalysisResult | null>(null);
+  const [pricingResult, setPricingResult] = useState<CrisisPricingResult | null>(null);
+  const [approvedPrices, setApprovedPrices] = useState<Record<number, boolean>>({});
   const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -424,6 +472,60 @@ function App() {
     }
   }
 
+  async function analyzeCrisisPricing() {
+    setLoading(true);
+    setMessage("Считаю цены по оставшимся товарам: остатки WB, текущая цена, конкуренты MPStats.");
+    try {
+      const result = await request<CrisisPricingResult>("/api/v1/pricing/crisis/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          limit: 25,
+          supplier: "zvezda",
+          max_raise_percent: 35,
+          target_percentile: 0.75,
+          min_stock: 1,
+          only_with_stock: true,
+        }),
+      });
+      setPricingResult(result);
+      setApprovedPrices({});
+      setMessage(`Проверено товаров: ${result.analyzed}. Рекомендовано поднять цену: ${result.recommended}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка анализа цен");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function dryRunApprovedPrices() {
+    const items = (pricingResult?.items ?? [])
+      .filter((item) => approvedPrices[item.nm_id] && item.recommended_price)
+      .map((item) => ({
+        nm_id: item.nm_id,
+        price: Number(item.recommended_price),
+        discount: item.current_discount ?? 0,
+      }));
+    if (!items.length) {
+      setMessage("Отметьте товары, по которым согласовано повышение цены.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await request<{ uploaded: number; payload: unknown }>("/api/v1/pricing/crisis/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: true, items }),
+      });
+      setMessage(`Проверка готова: подготовлено ${items.length} цен. В WB еще ничего не отправлено.`);
+      console.info(result);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка проверки цен");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadProductAnalysis(product: SupplierProduct) {
     if (!["analyzed", "analysis_pending"].includes(product.status)) {
       return;
@@ -553,6 +655,7 @@ function App() {
           <button className={page === "price" ? "active" : ""} onClick={() => navigate("price")}><FileSpreadsheet size={18} /> Прайс</button>
           <button className={page === "products" ? "active" : ""} onClick={() => navigate("products")}><Search size={18} /> Товары</button>
           <button className={page === "analysis" ? "active" : ""} onClick={() => navigate("analysis")}><BarChart3 size={18} /> Анализ</button>
+          <button className={page === "pricing" ? "active" : ""} onClick={() => navigate("pricing")}><DollarSign size={18} /> Цены</button>
           <button className={page === "content" ? "active" : ""} onClick={() => navigate("content")}><ImagePlus size={18} /> Контент</button>
           <button className={page === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Settings size={18} /> Интеграции</button>
         </nav>
@@ -816,6 +919,70 @@ function App() {
           </div>
         </section> : null}
 
+        {page === "pricing" ? <section className="panel page-panel">
+          <div className="panel-title">
+            <h2>Цены после Электростали</h2>
+            <span>только товары с остатком на других складах</span>
+          </div>
+          <div className="pricing-toolbar">
+            <button onClick={analyzeCrisisPricing} disabled={loading}>Проанализировать цены</button>
+            <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить согласованные</button>
+          </div>
+          {!integrations?.wb_api ? (
+            <div className="hint">Для анализа цен нужен WB_API_TOKEN на backend: цены, остатки и аналитика.</div>
+          ) : null}
+          {pricingResult ? (
+            <>
+              <div className="pricing-summary">
+                Проверено: {pricingResult.analyzed}. Рекомендовано поднять: {pricingResult.recommended}. Без изменения: {pricingResult.skipped}.
+              </div>
+              <div className="pricing-list">
+                {pricingResult.items.map((item) => (
+                  <article className={`pricing-item ${item.decision}`} key={item.nm_id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(approvedPrices[item.nm_id])}
+                        disabled={item.decision !== "recommend_raise"}
+                        onChange={(event) =>
+                          setApprovedPrices((current) => ({ ...current, [item.nm_id]: event.target.checked }))
+                        }
+                      />
+                      <strong>{item.name}</strong>
+                    </label>
+                    <span>{formatPricingDecision(item.decision)}</span>
+                    <dl>
+                      <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
+                      <dt>Остаток</dt><dd>{item.stock_qty}</dd>
+                      <dt>Текущая цена</dt><dd>{formatMoney(item.current_price)}</dd>
+                      <dt>Цена со скидкой</dt><dd>{formatMoney(item.current_discounted_price)}</dd>
+                      <dt>Рынок</dt><dd>{formatMarketRange(item)}</dd>
+                      <dt>Заказы 30 дней</dt><dd>{formatNumber(item.orders_30d)}</dd>
+                      <dt>Новая цена</dt><dd>{formatMoney(item.recommended_price)}</dd>
+                      <dt>Рост</dt><dd>{formatPercentString(item.raise_percent)}</dd>
+                      <dt>Причина</dt><dd>{item.reason}</dd>
+                    </dl>
+                    {item.competitors.length ? (
+                      <div className="pricing-competitors">
+                        <strong>Конкуренты</strong>
+                        {item.competitors.slice(0, 5).map((competitor) => (
+                          <div key={`${item.nm_id}-${competitor.nm_id}`}>
+                            <span>{competitor.name ?? "Без названия"}</span>
+                            <em>{competitor.seller ?? competitor.brand ?? "нет продавца"}</em>
+                            <b>{formatMoney(competitor.price)} · 30д {formatNumber(competitor.orders_30d)} шт · остаток {formatNumber(competitor.stock)}</b>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty">Нажмите “Проанализировать цены”. Система рассчитает рекомендации, но ничего не изменит в WB без согласования.</div>
+          )}
+        </section> : null}
+
         {page === "settings" ? <section className="panel page-panel">
           <div className="panel-title">
             <h2>Интеграции</h2>
@@ -839,6 +1006,7 @@ function App() {
             <Status label="Aidentika" ok={integrations?.aidentika} />
             <Status label="GPT" ok={integrations?.openai} />
             <Status label="Gemini" ok={integrations?.gemini} />
+            <Status label="WB API" ok={integrations?.wb_api} />
           </div>
         </section> : null}
       </main>
@@ -1029,6 +1197,27 @@ function formatPriceRange(analysis: ProductAnalysis) {
   return `${formatMoney(analysis.market_price_min)} / ${formatMoney(analysis.market_price_avg)} / ${formatMoney(analysis.market_price_max)}`;
 }
 
+function formatMarketRange(item: CrisisPriceRecommendation) {
+  return `${formatMoney(item.competitor_price_min)} / ${formatMoney(item.competitor_price_median)} / ${formatMoney(item.competitor_price_target)} / ${formatMoney(item.competitor_price_max)}`;
+}
+
+function formatPercentString(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") {
+    return "нет данных";
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? `${number.toFixed(1)}%` : "нет данных";
+}
+
+function formatPricingDecision(decision: CrisisPriceRecommendation["decision"]) {
+  const names = {
+    recommend_raise: "рекомендуется поднять",
+    hold: "оставить как есть",
+    skip: "не менять",
+  };
+  return names[decision];
+}
+
 function recommendationReason(product: SupplierProduct) {
   const reasons = [
     product.status === "analyzed" ? "есть анализ MPStats" : null,
@@ -1079,7 +1268,7 @@ function formatEntityName(value?: string | { name?: string | null } | null) {
 
 function pageFromHash(hash: string): Page {
   const page = hash.replace("#", "");
-  if (["price", "products", "analysis", "content", "settings"].includes(page)) {
+  if (["price", "products", "analysis", "pricing", "content", "settings"].includes(page)) {
     return page as Page;
   }
   return "price";
