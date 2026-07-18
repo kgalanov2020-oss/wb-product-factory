@@ -31,13 +31,14 @@ class CrisisPricingService:
 
     async def analyze(self, request: CrisisPricingRequest) -> CrisisPricingResult:
         wb_client = self._wb_client or WBApiClient(self._settings)
-        prices_by_nm = await wb_client.list_prices()
         listed = await self._repository.list_listed_products_with_stock(
             limit=request.limit,
             supplier=request.supplier,
             min_stock=request.min_stock,
             only_with_stock=request.only_with_stock,
         )
+        nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
+        prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids)
 
         items: list[CrisisPriceRecommendation] = []
         for row in listed:

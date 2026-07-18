@@ -55,6 +55,27 @@ class WBApiClient:
                 offset += limit
         return result
 
+    async def list_prices_by_nm_ids(self, nm_ids: list[int]) -> dict[int, dict[str, Any]]:
+        result: dict[int, dict[str, Any]] = {}
+        unique_ids = list(dict.fromkeys(nm_id for nm_id in nm_ids if nm_id > 0))
+        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+            for chunk in _chunks(unique_ids, 1000):
+                response = await _request_with_retry(
+                    client,
+                    "POST",
+                    f"{self._prices_base_url}/api/v2/list/goods/filter",
+                    headers={**self._headers, "Content-Type": "application/json"},
+                    json={"nmList": chunk},
+                )
+                payload = response.json()
+                items = ((payload.get("data") or {}).get("listGoods") or []) if isinstance(payload, dict) else []
+                for item in items:
+                    nm_id = _safe_int(item.get("nmID"))
+                    if nm_id is not None:
+                        result[nm_id] = item
+                await asyncio.sleep(0.65)
+        return result
+
     async def list_stocks(self, date_from: date | None = None) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await _request_with_retry(
@@ -111,6 +132,10 @@ def _retry_delay(retry_after: str | None, attempt: int) -> float:
         except ValueError:
             pass
     return min(2.0 * (attempt + 1), 12.0)
+
+
+def _chunks(values: list[int], size: int) -> list[list[int]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
 
 def _safe_int(value: Any) -> int | None:
