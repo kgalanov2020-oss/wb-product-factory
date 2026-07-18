@@ -18,6 +18,7 @@ async def collect_mpstats_api_snapshot(
     product_name: str | None = None,
     product_sku: str | None = None,
     reference_price: Decimal | None = None,
+    detail_rows: int = 15,
 ) -> MPStatsSnapshot:
     token = settings.mpstats_api_secret
     if token is None:
@@ -40,7 +41,7 @@ async def collect_mpstats_api_snapshot(
         response.raise_for_status()
         payload = response.json()
         rows = _rows(payload)
-        detail_payloads = await _collect_sku_details(client, headers, rows)
+        detail_payloads = await _collect_sku_details(client, headers, rows, detail_rows=detail_rows)
     all_competitors = [
         _normalize_row(
             {**row, "mpstats_details": detail_payloads.get(str(_first(row, "id", "nm_id", "nmId")), {})}
@@ -91,6 +92,7 @@ async def _collect_sku_details(
     client: httpx.AsyncClient,
     headers: dict[str, str],
     rows: list[Any],
+    detail_rows: int,
 ) -> dict[str, Any]:
     details: dict[str, Any] = {}
     semaphore = asyncio.Semaphore(6)
@@ -108,7 +110,7 @@ async def _collect_sku_details(
                 return sku_text, period_key, {"error": str(exc)}
 
     tasks = []
-    for row in rows[:15]:
+    for row in rows[:detail_rows]:
         if not isinstance(row, dict):
             continue
         sku = _first(row, "id", "nm_id", "nmId")

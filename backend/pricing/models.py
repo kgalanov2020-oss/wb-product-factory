@@ -40,6 +40,7 @@ class CrisisPriceRecommendation(BaseModel):
     current_discounted_price: Decimal | None = None
     competitor_count: int
     competitor_price_min: Decimal | None = None
+    competitor_price_avg: Decimal | None = None
     competitor_price_median: Decimal | None = None
     competitor_price_target: Decimal | None = None
     competitor_price_max: Decimal | None = None
@@ -50,6 +51,8 @@ class CrisisPriceRecommendation(BaseModel):
     expected_discounted_price: Decimal | None = None
     decision: Literal["recommend_raise", "hold", "skip"] = "skip"
     reason: str
+    recommendation_basis: str | None = None
+    current_price_source: str | None = None
     competitors: list[CompetitorPricePoint] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)
 

@@ -144,6 +144,7 @@ type CrisisPriceRecommendation = {
   current_discounted_price?: string | null;
   competitor_count: number;
   competitor_price_min?: string | null;
+  competitor_price_avg?: string | null;
   competitor_price_median?: string | null;
   competitor_price_target?: string | null;
   competitor_price_max?: string | null;
@@ -154,6 +155,8 @@ type CrisisPriceRecommendation = {
   expected_discounted_price?: string | null;
   decision: "recommend_raise" | "hold" | "skip";
   reason: string;
+  recommendation_basis?: string | null;
+  current_price_source?: string | null;
   competitors: Array<{
     nm_id?: number | null;
     name?: string | null;
@@ -954,13 +957,16 @@ function App() {
                     <dl>
                       <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
-                      <dt>Текущая цена</dt><dd>{formatMoney(item.current_price)}</dd>
+                      <dt>Текущая цена</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price_source ?? "источник недоступен"}</small></dd>
                       <dt>Цена со скидкой</dt><dd>{formatMoney(item.current_discounted_price)}</dd>
                       <dt>Рынок</dt><dd>{formatMarketRange(item)}</dd>
+                      <dt>Минимум - 2%</dt><dd>{formatMoney(item.competitor_price_target)} <small>расчетная цель: на 2% ниже минимального конкурента</small></dd>
                       <dt>Заказы 30 дней</dt><dd>{formatNumber(item.orders_30d)}</dd>
+                      <dt>Заказы, ₽ 30 дней</dt><dd>{formatMoney(item.revenue_30d)}</dd>
                       <dt>Новая цена</dt><dd>{formatMoney(item.recommended_price)}</dd>
                       <dt>Рост</dt><dd>{formatPercentString(item.raise_percent)}</dd>
-                      <dt>Причина</dt><dd>{item.reason}</dd>
+                      <dt>Логика</dt><dd>{item.recommendation_basis ?? item.reason}</dd>
+                      <dt>Обоснование</dt><dd>{item.reason}</dd>
                     </dl>
                     {item.competitors.length ? (
                       <div className="pricing-competitors">
@@ -969,7 +975,7 @@ function App() {
                           <div key={`${item.nm_id}-${competitor.nm_id}`}>
                             <span>{competitor.name ?? "Без названия"}</span>
                             <em>{competitor.seller ?? competitor.brand ?? "нет продавца"}</em>
-                            <b>{formatMoney(competitor.price)} · 30д {formatNumber(competitor.orders_30d)} шт · остаток {formatNumber(competitor.stock)}</b>
+                            <b>цена {formatMoney(competitor.price)} · 30 дней {formatNumber(competitor.orders_30d)} шт / {formatMoney(competitor.revenue_30d)} · остаток {formatNumber(competitor.stock)}</b>
                           </div>
                         ))}
                       </div>
@@ -1198,7 +1204,7 @@ function formatPriceRange(analysis: ProductAnalysis) {
 }
 
 function formatMarketRange(item: CrisisPriceRecommendation) {
-  return `${formatMoney(item.competitor_price_min)} / ${formatMoney(item.competitor_price_median)} / ${formatMoney(item.competitor_price_target)} / ${formatMoney(item.competitor_price_max)}`;
+  return `${formatMoney(item.competitor_price_min)} / ${formatMoney(item.competitor_price_avg)} / ${formatMoney(item.competitor_price_median)} / ${formatMoney(item.competitor_price_max)} (мин / средняя / медиана / макс)`;
 }
 
 function formatPercentString(value?: string | number | null) {

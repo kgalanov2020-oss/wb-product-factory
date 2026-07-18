@@ -51,6 +51,36 @@ async def collect_wb_public_snapshot(query: str) -> MPStatsSnapshot:
     )
 
 
+async def get_wb_public_card_price(nm_id: int) -> tuple[Decimal | None, dict[str, Any]]:
+    params = {
+        "appType": "1",
+        "curr": "rub",
+        "dest": "-1257786",
+        "spp": "30",
+        "nm": str(nm_id),
+    }
+    url = "https://card.wb.ru/cards/v4/detail"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 WB Product Factory/1.0",
+    }
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        response: httpx.Response | None = None
+        for attempt in range(3):
+            response = await client.get(url, params=params, headers=headers)
+            if response.status_code != 429:
+                break
+            await asyncio.sleep(2 * (attempt + 1))
+    assert response is not None
+    response.raise_for_status()
+    payload = response.json()
+    products = payload.get("products")
+    if not isinstance(products, list):
+        products = payload.get("data", {}).get("products") if isinstance(payload.get("data"), dict) else []
+    product = products[0] if isinstance(products, list) and products and isinstance(products[0], dict) else {}
+    return _price(product), product
+
+
 def _normalize_product(product: dict[str, Any]) -> dict[str, Any]:
     price = _price(product)
     sales_proxy = _number(product.get("feedbacks")) or _number(product.get("reviewRating")) or 0
