@@ -294,10 +294,21 @@ async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPri
         if _norm_key(row.get("Артикул продавца"))
     }
     latest_date = max((str(row.get("Дата снимка") or "").strip() for row in stock_rows), default="")
+    latest_rows = [
+        row for row in stock_rows if latest_date and str(row.get("Дата снимка") or "").strip() == latest_date
+    ]
+    latest_positive = [
+        row for row in latest_rows if (_safe_int(row.get("Остаток на складах")) or 0) >= request.min_stock
+    ]
+    if request.only_with_stock and len(latest_positive) < request.limit:
+        source_rows = _latest_stock_row_per_nm(stock_rows)
+        source_mode = "google_sheet_latest_per_sku"
+    else:
+        source_rows = latest_rows
+        source_mode = "google_sheet_latest_snapshot"
+
     stock_by_nm: dict[str, dict[str, Any]] = {}
-    for stock in stock_rows:
-        if latest_date and str(stock.get("Дата снимка") or "").strip() != latest_date:
-            continue
+    for stock in source_rows:
         nm_id = _safe_int(stock.get("Артикул WB"))
         if not nm_id:
             continue
@@ -318,8 +329,8 @@ async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPri
                 "purchase_price": _to_decimal(catalog.get("Цена закупки")),
                 "stock_qty": 0,
                 "raw": {
-                    "source": "google_sheet_wb_stocks",
-                    "stock_snapshot_date": latest_date,
+                    "source": source_mode,
+                    "stock_snapshot_date": str(stock.get("Дата снимка") or "").strip() or latest_date,
                     "stocks": [],
                     "catalog": catalog,
                 },
@@ -337,6 +348,19 @@ async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPri
         if len(rows) >= request.limit:
             break
     return rows
+
+
+def _latest_stock_row_per_nm(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    latest_by_nm: dict[str, dict[str, str]] = {}
+    for row in rows:
+        key = str(row.get("Артикул WB") or "").strip()
+        if not key:
+            continue
+        current_date = str(row.get("Дата снимка") or "").strip()
+        existing_date = str(latest_by_nm.get(key, {}).get("Дата снимка") or "").strip()
+        if key not in latest_by_nm or current_date > existing_date:
+            latest_by_nm[key] = row
+    return list(latest_by_nm.values())
 
 
 async def _download_google_sheet_csv(spreadsheet_id: str, gid: str) -> str:
