@@ -316,18 +316,8 @@ async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPri
         if _norm_key(row.get("Артикул продавца"))
     }
     latest_date = max((str(row.get("Дата снимка") or "").strip() for row in stock_rows), default="")
-    latest_rows = [
-        row for row in stock_rows if latest_date and str(row.get("Дата снимка") or "").strip() == latest_date
-    ]
-    latest_positive = [
-        row for row in latest_rows if (_safe_int(row.get("Остаток на складах")) or 0) >= request.min_stock
-    ]
-    if request.only_with_stock and len(latest_positive) < request.limit:
-        source_rows = _latest_stock_row_per_nm(stock_rows)
-        source_mode = "google_sheet_latest_per_sku"
-    else:
-        source_rows = latest_rows
-        source_mode = "google_sheet_latest_snapshot"
+    source_rows = _latest_stock_row_per_nm(stock_rows)
+    source_mode = "google_sheet_latest_per_sku"
 
     stock_by_nm: dict[str, dict[str, Any]] = {}
     for stock in source_rows:
