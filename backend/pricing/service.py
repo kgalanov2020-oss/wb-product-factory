@@ -70,7 +70,7 @@ class CrisisPricingService:
 
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
-            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=6)
+            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=0)
         except WBApiRateLimitError:
             prices_by_nm = {}
         prices_by_nm = await _fill_missing_wb_prices(wb_client, nm_ids, prices_by_nm)
@@ -140,7 +140,7 @@ class CrisisPricingService:
             product_name=name,
             product_sku=manufacturer_article or vendor_code,
             reference_price=_to_decimal(row.get("purchase_price")),
-            detail_rows=2,
+            detail_rows=1,
         )
         own_price = _own_price(snapshot.competitors, nm_id)
         if current_price is None and own_price is not None:
@@ -272,15 +272,14 @@ async def _fill_missing_wb_prices(
         return prices_by_nm
     for nm_id in missing:
         try:
-            item = await wb_client.list_price_by_nm_id(nm_id, retries=3)
+            item = await wb_client.list_price_by_nm_id(nm_id, retries=0)
         except WBApiRateLimitError:
-            await asyncio.sleep(5.0)
             continue
         except Exception:
             continue
         if item:
             prices_by_nm[nm_id] = item
-        await asyncio.sleep(1.2)
+        await asyncio.sleep(0.2)
     return prices_by_nm
 
 
