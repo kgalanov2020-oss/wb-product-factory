@@ -124,6 +124,8 @@ class CrisisPricingService:
             row = prices_by_nm.get(nm_id, {})
             current_price, current_discount, seller_discounted = _current_prices(row)
             site_price, public_payload = await _safe_public_price(nm_id)
+            if site_price is None:
+                site_price, public_payload = await _safe_mpstats_card_price(self._settings, nm_id)
             expected = request.expected_site_prices.get(nm_id)
             delta = None
             status_value = "no_data"
