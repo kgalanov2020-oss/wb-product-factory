@@ -140,7 +140,7 @@ class CrisisPricingService:
             product_name=name,
             product_sku=manufacturer_article or vendor_code,
             reference_price=_to_decimal(row.get("purchase_price")),
-            detail_rows=5,
+            detail_rows=2,
         )
         own_price = _own_price(snapshot.competitors, nm_id)
         if current_price is None and own_price is not None:

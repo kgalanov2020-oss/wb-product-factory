@@ -248,6 +248,8 @@ type Competitor = NonNullable<
 >[number];
 
 type Page = "price" | "products" | "analysis" | "pricing" | "content" | "settings";
+type ApiRequestOptions = RequestInit & { timeoutMs?: number };
+const PRICING_BATCH_SIZE = 3;
 
 function App() {
   const [page, setPage] = useState<Page>(() => pageFromHash(window.location.hash));
@@ -302,13 +304,25 @@ function App() {
     window.location.hash = nextPage;
   }
 
-  async function request<T>(path: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(`${apiUrl}${path}`, options);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(readableApiError(payload.detail ?? `Ошибка API: ${response.status}`));
+  async function request<T>(path: string, options?: ApiRequestOptions): Promise<T> {
+    const { timeoutMs = 120000, ...fetchOptions } = options ?? {};
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${apiUrl}${path}`, { ...fetchOptions, signal: controller.signal });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(readableApiError(payload.detail ?? `Ошибка API: ${response.status}`));
+      }
+      return payload as T;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("Расчет не ответил за 2 минуты. Нажмите еще раз или перейдите к следующей пачке: WB/MPStats сейчас отвечают медленно.");
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
     }
-    return payload as T;
   }
 
   async function refresh() {
@@ -506,14 +520,14 @@ function App() {
 
   async function analyzeCrisisPricing(nextOffset = 0) {
     setLoading(true);
-    const batchSize = 10;
-    setMessage(`Считаю цены по оставшимся товарам: пачка ${nextOffset + 1}-${nextOffset + batchSize}.`);
+    setMessage(`Считаю цены по оставшимся товарам: пачка ${nextOffset + 1}-${nextOffset + PRICING_BATCH_SIZE}.`);
     try {
       const result = await request<CrisisPricingResult>("/api/v1/pricing/crisis/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 120000,
         body: JSON.stringify({
-          limit: batchSize,
+          limit: PRICING_BATCH_SIZE,
           offset: nextOffset,
           supplier: "zvezda",
           max_raise_percent: 35,
@@ -964,7 +978,7 @@ function App() {
           </div>
           <div className="pricing-toolbar">
             <button onClick={() => analyzeCrisisPricing(0)} disabled={loading}>Проанализировать цены</button>
-            <button onClick={() => analyzeCrisisPricing(pricingOffset + 10)} disabled={loading}>Следующая пачка</button>
+            <button onClick={() => analyzeCrisisPricing(pricingOffset + PRICING_BATCH_SIZE)} disabled={loading}>Следующая пачка</button>
             <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить согласованные</button>
           </div>
           {!integrations?.wb_api ? (
