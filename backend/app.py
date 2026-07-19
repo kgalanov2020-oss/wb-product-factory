@@ -127,6 +127,39 @@ async def integrations_health() -> dict[str, bool]:
     }
 
 
+@app.get("/api/v1/debug/config", tags=["system"])
+async def debug_config() -> dict[str, object]:
+    key = settings.supabase_api_secret.get_secret_value() if settings.supabase_api_secret else ""
+    return {
+        "supabase_configured": settings.supabase_configured,
+        "supabase_url": str(settings.supabase_url) if settings.supabase_url else None,
+        "supabase_key_type": (
+            "jwt"
+            if key.startswith("eyJ")
+            else "secret"
+            if key.startswith("sb_secret_")
+            else "publishable"
+            if key.startswith("sb_publishable_")
+            else "unknown"
+            if key
+            else "missing"
+        ),
+        "supabase_key_length": len(key),
+        "supabase_anon_present": bool(__import__("os").getenv("SUPABASE_ANON_KEY")),
+        "supabase_anon_type": (
+            "publishable"
+            if (__import__("os").getenv("SUPABASE_ANON_KEY") or "").startswith("sb_publishable_")
+            else "jwt"
+            if (__import__("os").getenv("SUPABASE_ANON_KEY") or "").startswith("eyJ")
+            else "unknown"
+            if __import__("os").getenv("SUPABASE_ANON_KEY")
+            else "missing"
+        ),
+        "mpstats_api": settings.mpstats_api_configured,
+        "wb_api": settings.wb_api_configured,
+    }
+
+
 @app.post(
     "/api/v1/mpstats/collect",
     response_model=CollectionResult,
