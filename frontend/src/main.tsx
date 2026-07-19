@@ -241,7 +241,10 @@ function App() {
   const [page, setPage] = useState<Page>(() => pageFromHash(window.location.hash));
   const [apiUrl, setApiUrl] = useState(() => {
     const savedApiUrl = localStorage.getItem(API_URL_STORAGE_KEY);
-    return savedApiUrl === LOCAL_API_URL ? DEFAULT_API_URL : savedApiUrl ?? DEFAULT_API_URL;
+    if (!savedApiUrl || savedApiUrl.includes("localhost") || savedApiUrl.includes("127.0.0.1")) {
+      return DEFAULT_API_URL;
+    }
+    return savedApiUrl;
   });
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
