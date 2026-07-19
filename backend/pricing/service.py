@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -46,10 +47,16 @@ class CrisisPricingService:
         except WBApiRateLimitError:
             prices_by_nm = {}
 
-        items: list[CrisisPriceRecommendation] = []
-        for row in listed:
-            recommendation = await self._analyze_row(row, prices_by_nm, request)
-            items.append(recommendation)
+        semaphore = asyncio.Semaphore(3)
+
+        async def analyze_one(row: dict[str, Any]) -> CrisisPriceRecommendation:
+            async with semaphore:
+                try:
+                    return await self._analyze_row(row, prices_by_nm, request)
+                except Exception as exc:
+                    return _failed_recommendation(row, exc)
+
+        items = await asyncio.gather(*(analyze_one(row) for row in listed))
 
         recommended = sum(1 for item in items if item.decision == "recommend_raise")
         return CrisisPricingResult(
@@ -191,6 +198,25 @@ def _query(row: dict[str, Any]) -> str:
         row.get("product_name") or row.get("mapping_name"),
     ]
     return " ".join(str(part).strip() for part in parts if part).strip()[:300]
+
+
+def _failed_recommendation(row: dict[str, Any], exc: Exception) -> CrisisPriceRecommendation:
+    nm_id = _safe_int(row.get("wb_article")) or 0
+    name = row.get("product_name") or row.get("mapping_name") or row.get("seller_article") or str(nm_id)
+    return CrisisPriceRecommendation(
+        nm_id=nm_id,
+        vendor_code=row.get("seller_article"),
+        manufacturer_article=row.get("manufacturer_article"),
+        name=name,
+        brand=row.get("brand"),
+        subject=row.get("subject"),
+        stock_qty=_safe_int(row.get("stock_qty")) or 0,
+        competitor_count=0,
+        decision="skip",
+        reason=f"Не меняем: не удалось получить рыночные данные по товару. Ошибка: {str(exc)[:250]}",
+        recommendation_basis="Нет подтвержденных цен и продаж конкурентов, решение по цене принимать нельзя.",
+        raw={"stock_row": row, "error": str(exc)},
+    )
 
 
 def _competitors(rows: list[dict[str, Any]], own_nm_id: int) -> list[CompetitorPricePoint]:

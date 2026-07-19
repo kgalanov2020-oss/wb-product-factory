@@ -483,7 +483,7 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          limit: 25,
+          limit: 10,
           supplier: "zvezda",
           max_raise_percent: 35,
           target_percentile: 0.75,
@@ -491,6 +491,9 @@ function App() {
           only_with_stock: true,
         }),
       });
+      if (!Array.isArray(result.items) || typeof result.analyzed !== "number") {
+        throw new Error((result as { detail?: string }).detail ?? "Backend вернул неполный ответ по анализу цен.");
+      }
       setPricingResult(result);
       setApprovedPrices({});
       setMessage(`Проверено товаров: ${result.analyzed}. Рекомендовано поднять цену: ${result.recommended}.`);
@@ -937,7 +940,7 @@ function App() {
           {pricingResult ? (
             <>
               <div className="pricing-summary">
-                Проверено: {pricingResult.analyzed}. Рекомендовано поднять: {pricingResult.recommended}. Без изменения: {pricingResult.skipped}.
+                Проверено: {pricingResult.analyzed ?? 0}. Рекомендовано поднять: {pricingResult.recommended ?? 0}. Без изменения: {pricingResult.skipped ?? 0}.
               </div>
               <div className="pricing-list">
                 {(pricingResult.items ?? []).map((item) => (
