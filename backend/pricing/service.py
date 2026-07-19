@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -43,7 +45,12 @@ class CrisisPricingService:
                 only_with_stock=request.only_with_stock,
             )
         except Exception:
-            listed = await _listed_from_wb(wb_client, request)
+            listed = []
+        if not listed:
+            try:
+                listed = await _listed_from_wb(wb_client, request)
+            except WBApiRateLimitError:
+                listed = await _listed_from_google_stock_sheet(self._settings, request)
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
             prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids)
@@ -233,6 +240,86 @@ async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest)
         if len(rows) >= request.limit:
             break
     return rows
+
+
+async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPricingRequest) -> list[dict[str, Any]]:
+    stocks_csv, catalog_csv = await asyncio.gather(
+        _download_google_sheet_csv(settings.zvezda_google_sheet_id, settings.zvezda_stock_sheet_gid),
+        _download_google_sheet_csv(settings.zvezda_google_sheet_id, settings.zvezda_catalog_sheet_gid),
+    )
+    stock_rows = _csv_rows(stocks_csv)
+    catalog_rows = _csv_rows(catalog_csv)
+    catalog_by_wb = {
+        str(row.get("Артикул WB") or "").strip(): row
+        for row in catalog_rows
+        if str(row.get("Артикул WB") or "").strip()
+    }
+    catalog_by_vendor = {
+        _norm_key(row.get("Артикул продавца")): row
+        for row in catalog_rows
+        if _norm_key(row.get("Артикул продавца"))
+    }
+    latest_date = max((str(row.get("Дата снимка") or "").strip() for row in stock_rows), default="")
+    stock_by_nm: dict[str, dict[str, Any]] = {}
+    for stock in stock_rows:
+        if latest_date and str(stock.get("Дата снимка") or "").strip() != latest_date:
+            continue
+        nm_id = _safe_int(stock.get("Артикул WB"))
+        if not nm_id:
+            continue
+        key = str(nm_id)
+        stock_qty = _safe_int(stock.get("Остаток на складах")) or 0
+        vendor_code = str(stock.get("Артикул продавца") or "").strip()
+        catalog = catalog_by_wb.get(key) or catalog_by_vendor.get(_norm_key(vendor_code)) or {}
+        existing = stock_by_nm.setdefault(
+            key,
+            {
+                "wb_article": key,
+                "seller_article": vendor_code or catalog.get("Артикул продавца"),
+                "manufacturer_article": catalog.get("Артикул производителя") or vendor_code,
+                "brand": stock.get("Бренд"),
+                "subject": stock.get("Предмет"),
+                "mapping_name": stock.get("Предмет") or catalog.get("Наименование") or vendor_code or key,
+                "product_name": catalog.get("Наименование") or stock.get("Предмет") or vendor_code or key,
+                "purchase_price": _to_decimal(catalog.get("Цена закупки")),
+                "stock_qty": 0,
+                "raw": {
+                    "source": "google_sheet_wb_stocks",
+                    "stock_snapshot_date": latest_date,
+                    "stocks": [],
+                    "catalog": catalog,
+                },
+            },
+        )
+        existing["stock_qty"] += stock_qty
+        existing["raw"]["stocks"].append(stock)
+
+    rows: list[dict[str, Any]] = []
+    for row in stock_by_nm.values():
+        stock_qty = int(row.get("stock_qty") or 0)
+        if request.only_with_stock and stock_qty < request.min_stock:
+            continue
+        rows.append(row)
+        if len(rows) >= request.limit:
+            break
+    return rows
+
+
+async def _download_google_sheet_csv(spreadsheet_id: str, gid: str) -> str:
+    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        response = await client.get(url)
+    response.raise_for_status()
+    return response.text
+
+
+def _csv_rows(content: str) -> list[dict[str, str]]:
+    reader = csv.DictReader(io.StringIO(content))
+    return [dict(row) for row in reader]
+
+
+def _norm_key(value: Any) -> str:
+    return str(value or "").strip().lower()
 
 
 def _query(row: dict[str, Any]) -> str:
