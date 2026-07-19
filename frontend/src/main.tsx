@@ -271,6 +271,7 @@ function App() {
   const [analysisState, setAnalysisState] = useState<Record<string, AnalysisState>>({});
   const [batchProgress, setBatchProgress] = useState<BatchAnalysisResult | null>(null);
   const [pricingResult, setPricingResult] = useState<CrisisPricingResult | null>(null);
+  const [pricingOffset, setPricingOffset] = useState(0);
   const [approvedPrices, setApprovedPrices] = useState<Record<number, boolean>>({});
   const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -490,15 +491,16 @@ function App() {
     }
   }
 
-  async function analyzeCrisisPricing() {
+  async function analyzeCrisisPricing(nextOffset = 0) {
     setLoading(true);
-    setMessage("Считаю цены по оставшимся товарам: остатки WB, текущая цена, конкуренты MPStats.");
+    setMessage(`Считаю цены по оставшимся товарам: пачка ${nextOffset + 1}-${nextOffset + 25}.`);
     try {
       const result = await request<CrisisPricingResult>("/api/v1/pricing/crisis/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          limit: 10,
+          limit: 25,
+          offset: nextOffset,
           supplier: "zvezda",
           max_raise_percent: 35,
           target_percentile: 0.75,
@@ -510,8 +512,9 @@ function App() {
         throw new Error((result as { detail?: string }).detail ?? "Backend вернул неполный ответ по анализу цен.");
       }
       setPricingResult(result);
+      setPricingOffset(nextOffset);
       setApprovedPrices({});
-      setMessage(`Проверено товаров: ${result.analyzed}. Рекомендовано поднять цену: ${result.recommended}.`);
+      setMessage(`Пачка ${nextOffset + 1}-${nextOffset + result.analyzed}: проверено ${result.analyzed}. Рекомендовано поднять цену: ${result.recommended}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка анализа цен");
     } finally {
@@ -946,7 +949,8 @@ function App() {
             <span>только товары с остатком на других складах</span>
           </div>
           <div className="pricing-toolbar">
-            <button onClick={analyzeCrisisPricing} disabled={loading}>Проанализировать цены</button>
+            <button onClick={() => analyzeCrisisPricing(0)} disabled={loading}>Проанализировать цены</button>
+            <button onClick={() => analyzeCrisisPricing(pricingOffset + 25)} disabled={loading}>Следующая пачка</button>
             <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить согласованные</button>
           </div>
           {!integrations?.wb_api ? (
@@ -955,7 +959,7 @@ function App() {
           {pricingResult ? (
             <>
               <div className="pricing-summary">
-                Проверено: {pricingResult.analyzed ?? 0}. Рекомендовано поднять: {pricingResult.recommended ?? 0}. Без изменения: {pricingResult.skipped ?? 0}.
+                Пачка: {pricingOffset + 1}-{pricingOffset + (pricingResult.analyzed ?? 0)}. Проверено: {pricingResult.analyzed ?? 0}. Рекомендовано поднять: {pricingResult.recommended ?? 0}. Без изменения: {pricingResult.skipped ?? 0}.
               </div>
               <div className="pricing-list">
                 {(pricingResult.items ?? []).map((item) => (

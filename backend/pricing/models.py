@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 class CrisisPricingRequest(BaseModel):
     limit: int = Field(default=25, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
     supplier: str = "zvezda"
     max_raise_percent: Decimal = Field(default=Decimal("35"), ge=0, le=300)
     target_percentile: Decimal = Field(default=Decimal("0.75"), ge=Decimal("0.1"), le=Decimal("0.95"))

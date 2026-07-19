@@ -52,11 +52,12 @@ class CrisisPricingService:
         if not listed:
             try:
                 listed = await self._repository.list_listed_products_with_stock(
-                    limit=request.limit,
+                    limit=request.limit + request.offset,
                     supplier=request.supplier,
                     min_stock=request.min_stock,
                     only_with_stock=request.only_with_stock,
                 )
+                listed = listed[request.offset : request.offset + request.limit]
             except Exception:
                 listed = []
 
@@ -258,9 +259,7 @@ async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest)
         row["mapping_name"] = row.get("mapping_name")
         row["product_name"] = row.get("product_name") or row.get("mapping_name") or vendor_code or key
         rows.append(row)
-        if len(rows) >= request.limit:
-            break
-    return rows
+    return rows[request.offset : request.offset + request.limit]
 
 
 async def _fill_missing_wb_prices(
@@ -368,9 +367,7 @@ async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPri
         if request.only_with_stock and stock_qty < request.min_stock:
             continue
         rows.append(row)
-        if len(rows) >= request.limit:
-            break
-    return rows
+    return rows[request.offset : request.offset + request.limit]
 
 
 def _latest_stock_row_per_nm(rows: list[dict[str, str]]) -> list[dict[str, str]]:
