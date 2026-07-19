@@ -130,6 +130,34 @@ async def integrations_health() -> dict[str, bool]:
 @app.get("/api/v1/debug/config", tags=["system"])
 async def debug_config() -> dict[str, object]:
     key = settings.supabase_api_secret.get_secret_value() if settings.supabase_api_secret else ""
+    postgrest_headers: dict[str, list[dict[str, object]]] = {}
+    try:
+        client = request_client = request_supplier_client = None
+        del request_client, request_supplier_client
+        from supabase import create_client
+
+        if settings.supabase_url and settings.supabase_api_secret:
+            client = create_client(str(settings.supabase_url), settings.supabase_api_secret.get_secret_value())
+            for header_key, header_value in client.postgrest.session.headers.multi_items():
+                safe_value = str(header_value)
+                postgrest_headers.setdefault(header_key.lower(), []).append(
+                    {
+                        "length": len(safe_value),
+                        "type": (
+                            "bearer"
+                            if safe_value.startswith("Bearer ")
+                            else "jwt"
+                            if safe_value.startswith("eyJ")
+                            else "secret"
+                            if safe_value.startswith("sb_secret_")
+                            else "publishable"
+                            if safe_value.startswith("sb_publishable_")
+                            else "other"
+                        ),
+                    }
+                )
+    except Exception as exc:
+        postgrest_headers["error"] = [{"type": type(exc).__name__, "length": len(str(exc))}]
     return {
         "supabase_configured": settings.supabase_configured,
         "supabase_url": str(settings.supabase_url) if settings.supabase_url else None,
@@ -155,6 +183,7 @@ async def debug_config() -> dict[str, object]:
             if __import__("os").getenv("SUPABASE_ANON_KEY")
             else "missing"
         ),
+        "postgrest_headers": postgrest_headers,
         "mpstats_api": settings.mpstats_api_configured,
         "wb_api": settings.wb_api_configured,
     }
