@@ -28,8 +28,9 @@ def _patch_supabase_secret_key_headers() -> None:
             headers["Authorization"] = f"Bearer {self.supabase_key}"
             return headers
         if str(self.supabase_key).startswith("sb_secret_"):
-            headers.pop("Authorization", None)
+            headers["apiKey"] = self.supabase_key
             headers["apikey"] = self.supabase_key
+            headers["Authorization"] = f"Bearer {self.supabase_key}"
         return headers
 
     Client._get_auth_headers = get_auth_headers
@@ -88,7 +89,7 @@ class Settings(BaseSettings):
 
     def __init__(self, **values: object) -> None:
         super().__init__(**values)
-        if self.supabase_secret_key and not self.supabase_secret_key.get_secret_value().startswith("sb_secret_"):
+        if self.supabase_secret_key:
             self.supabase_service_role_key = self.supabase_secret_key
 
     @property
@@ -97,10 +98,10 @@ class Settings(BaseSettings):
 
     @property
     def supabase_api_secret(self) -> SecretStr | None:
+        if self.supabase_secret_key:
+            return self.supabase_secret_key
         if self.supabase_authorization_jwt:
             return self.supabase_authorization_jwt
-        if self.supabase_secret_key and not self.supabase_secret_key.get_secret_value().startswith("sb_secret_"):
-            return self.supabase_secret_key
         return self.supabase_service_role_key
 
     @property
