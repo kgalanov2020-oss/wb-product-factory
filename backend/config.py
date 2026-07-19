@@ -21,7 +21,7 @@ def _patch_supabase_secret_key_headers() -> None:
 
     def get_auth_headers(self, authorization: str | None = None) -> dict[str, str]:
         headers = original_get_auth_headers(self, authorization)
-        anon_key = os.getenv("SUPABASE_ANON_KEY")
+        anon_key = os.getenv("SUPABASE_APIKEY_JWT") or os.getenv("SUPABASE_ANON_KEY")
         if str(self.supabase_key).startswith("eyJ") and anon_key:
             headers["apiKey"] = anon_key
             headers["apikey"] = anon_key
