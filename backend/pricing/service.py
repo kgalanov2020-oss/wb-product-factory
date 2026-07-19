@@ -37,25 +37,39 @@ class CrisisPricingService:
 
     async def analyze(self, request: CrisisPricingRequest) -> CrisisPricingResult:
         wb_client = self._wb_client or WBApiClient(self._settings)
+        listed: list[dict[str, Any]] = []
         try:
-            listed = await self._repository.list_listed_products_with_stock(
-                limit=request.limit,
-                supplier=request.supplier,
-                min_stock=request.min_stock,
-                only_with_stock=request.only_with_stock,
-            )
-        except Exception:
-            listed = []
+            listed = await _listed_from_wb(wb_client, request)
+        except Exception as exc:
+            if not _looks_like_wb_rate_limit(exc):
+                try:
+                    listed = await _listed_from_google_stock_sheet(self._settings, request)
+                except Exception:
+                    listed = []
+            else:
+                listed = await _listed_from_google_stock_sheet(self._settings, request)
+
         if not listed:
             try:
-                listed = await _listed_from_wb(wb_client, request)
-            except Exception as exc:
-                if not _looks_like_wb_rate_limit(exc):
-                    raise
-                listed = await _listed_from_google_stock_sheet(self._settings, request)
+                listed = await self._repository.list_listed_products_with_stock(
+                    limit=request.limit,
+                    supplier=request.supplier,
+                    min_stock=request.min_stock,
+                    only_with_stock=request.only_with_stock,
+                )
+            except Exception:
+                listed = []
+
+        if len(listed) < request.limit:
+            try:
+                extra = await _listed_from_google_stock_sheet(self._settings, request)
+            except Exception:
+                extra = []
+            listed = _merge_listed_rows(listed, extra, request.limit)
+
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
-            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=4)
+            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=6)
         except WBApiRateLimitError:
             prices_by_nm = {}
 
@@ -246,6 +260,20 @@ async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest)
         if len(rows) >= request.limit:
             break
     return rows
+
+
+def _merge_listed_rows(primary: list[dict[str, Any]], secondary: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in [*primary, *secondary]:
+        key = str(row.get("wb_article") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+        if len(merged) >= limit:
+            break
+    return merged
 
 
 async def _listed_from_google_stock_sheet(settings: Settings, request: CrisisPricingRequest) -> list[dict[str, Any]]:
