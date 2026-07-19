@@ -30,7 +30,7 @@ class WBApiClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": self._token, "Accept": "application/json"}
 
-    async def list_prices(self, limit: int = 1000) -> dict[int, dict[str, Any]]:
+    async def list_prices(self, limit: int = 1000, retries: int = 8) -> dict[int, dict[str, Any]]:
         result: dict[int, dict[str, Any]] = {}
         offset = 0
         async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
@@ -39,6 +39,7 @@ class WBApiClient:
                     client,
                     "GET",
                     f"{self._prices_base_url}/api/v2/list/goods/filter",
+                    retries=retries,
                     headers=self._headers,
                     params={"limit": limit, "offset": offset},
                 )
@@ -55,7 +56,7 @@ class WBApiClient:
                 offset += limit
         return result
 
-    async def list_prices_by_nm_ids(self, nm_ids: list[int]) -> dict[int, dict[str, Any]]:
+    async def list_prices_by_nm_ids(self, nm_ids: list[int], retries: int = 8) -> dict[int, dict[str, Any]]:
         result: dict[int, dict[str, Any]] = {}
         unique_ids = list(dict.fromkeys(nm_id for nm_id in nm_ids if nm_id > 0))
         async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
@@ -64,6 +65,7 @@ class WBApiClient:
                     client,
                     "POST",
                     f"{self._prices_base_url}/api/v2/list/goods/filter",
+                    retries=retries,
                     headers={**self._headers, "Content-Type": "application/json"},
                     json={"nmList": chunk},
                 )
@@ -76,12 +78,13 @@ class WBApiClient:
                 await asyncio.sleep(0.65)
         return result
 
-    async def list_stocks(self, date_from: date | None = None) -> list[dict[str, Any]]:
+    async def list_stocks(self, date_from: date | None = None, retries: int = 8) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await _request_with_retry(
                 client,
                 "GET",
                 f"{self._statistics_base_url}/api/v1/supplier/stocks",
+                retries=retries,
                 headers=self._headers,
                 params={"dateFrom": (date_from or date(2019, 1, 1)).isoformat()},
             )

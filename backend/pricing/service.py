@@ -55,7 +55,7 @@ class CrisisPricingService:
                 listed = await _listed_from_google_stock_sheet(self._settings, request)
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
-            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids)
+            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=1)
         except WBApiRateLimitError:
             prices_by_nm = {}
 
@@ -208,7 +208,7 @@ class CrisisPricingService:
 
 
 async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest) -> list[dict[str, Any]]:
-    stocks = await wb_client.list_stocks()
+    stocks = await wb_client.list_stocks(retries=1)
     stock_by_nm: dict[str, dict[str, Any]] = {}
     for stock in stocks:
         nm_id = _safe_int(stock.get("nmId") or stock.get("nmID") or stock.get("nm_id"))
