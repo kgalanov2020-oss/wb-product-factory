@@ -306,7 +306,7 @@ function App() {
     const response = await fetch(`${apiUrl}${path}`, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.detail ?? `Ошибка API: ${response.status}`);
+      throw new Error(readableApiError(payload.detail ?? `Ошибка API: ${response.status}`));
     }
     return payload as T;
   }
@@ -315,25 +315,38 @@ function App() {
     setLoading(true);
     setMessage("");
     try {
-      const [health, stats, productList, recommendationList, contentJobs] = await Promise.all([
+      const [health, stats, productList, recommendationList, contentJobs] = await Promise.allSettled([
         request<Integrations>("/api/v1/integrations/health"),
         request<ProductStatsResponse>("/api/v1/supplier-products/stats"),
         request<ProductListResponse>("/api/v1/supplier-products?limit=100"),
         request<ProductListResponse>("/api/v1/supplier-products/recommendations?limit=10"),
         request<ContentJob[]>("/api/v1/product-content/jobs?limit=20"),
       ]);
-      setIntegrations(health);
-      setProductStats(stats);
-      setProducts(productList.products);
-      setRecommendations(recommendationList.products);
-      setTotal(productList.total);
-      setJobs(contentJobs);
+      const healthValue = settledValue(health);
+      const statsValue = settledValue(stats) ?? { total: 0, missing_on_wb: 0, listed: 0, analyzed: 0, content_ready: 0 };
+      const productListValue = settledValue(productList) ?? { products: [], total: 0 };
+      const recommendationListValue = settledValue(recommendationList) ?? { products: [], total: 0 };
+      const contentJobsValue = settledValue(contentJobs) ?? [];
+      if (healthValue) {
+        setIntegrations(healthValue);
+      }
+      setProductStats(statsValue);
+      setProducts(productListValue.products);
+      setRecommendations(recommendationListValue.products);
+      setTotal(productListValue.total);
+      setJobs(contentJobsValue);
       setSelected((current) => {
         if (!current) {
-          return productList.products[0] ?? null;
+          return productListValue.products[0] ?? null;
         }
-        return productList.products.find((product) => product.id === current.id) ?? current;
+        return productListValue.products.find((product) => product.id === current.id) ?? current;
       });
+      const firstError = [health, stats, productList, recommendationList, contentJobs].find(
+        (result) => result.status === "rejected",
+      );
+      if (firstError?.status === "rejected") {
+        setMessage(firstError.reason instanceof Error ? firstError.reason.message : "Часть данных временно недоступна.");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка обновления");
     } finally {
@@ -493,13 +506,14 @@ function App() {
 
   async function analyzeCrisisPricing(nextOffset = 0) {
     setLoading(true);
-    setMessage(`Считаю цены по оставшимся товарам: пачка ${nextOffset + 1}-${nextOffset + 25}.`);
+    const batchSize = 10;
+    setMessage(`Считаю цены по оставшимся товарам: пачка ${nextOffset + 1}-${nextOffset + batchSize}.`);
     try {
       const result = await request<CrisisPricingResult>("/api/v1/pricing/crisis/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          limit: 25,
+          limit: batchSize,
           offset: nextOffset,
           supplier: "zvezda",
           max_raise_percent: 35,
@@ -950,7 +964,7 @@ function App() {
           </div>
           <div className="pricing-toolbar">
             <button onClick={() => analyzeCrisisPricing(0)} disabled={loading}>Проанализировать цены</button>
-            <button onClick={() => analyzeCrisisPricing(pricingOffset + 25)} disabled={loading}>Следующая пачка</button>
+            <button onClick={() => analyzeCrisisPricing(pricingOffset + 10)} disabled={loading}>Следующая пачка</button>
             <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить согласованные</button>
           </div>
           {!integrations?.wb_api ? (
@@ -1187,6 +1201,21 @@ function formatMoney(value?: string | number | null) {
     return "нет данных";
   }
   return `${number.toFixed(0)} ₽`;
+}
+
+function settledValue<T>(result: PromiseSettledResult<T>): T | null {
+  return result.status === "fulfilled" ? result.value : null;
+}
+
+function readableApiError(detail: unknown) {
+  const text = typeof detail === "string" ? detail : JSON.stringify(detail);
+  if (text.includes("Invalid API key") || text.includes("401")) {
+    return "Supabase не принимает ключ API на Render. Раздел цен может работать через WB/MPStats, но прайс и история из Supabase временно недоступны.";
+  }
+  if (text.includes("Supplier product tables are unavailable")) {
+    return "Supabase сейчас недоступен для таблиц прайса. Раздел цен можно использовать отдельно.";
+  }
+  return text;
 }
 
 function defaultContentAssets(): ContentAssetType[] {
