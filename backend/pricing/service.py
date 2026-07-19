@@ -155,6 +155,8 @@ class CrisisPricingService:
             name=name,
             stock_qty=stock_qty,
             current_price=current_price,
+            current_discount=current_discount,
+            current_customer_price=current_discounted,
             current_price_source=current_price_source,
             market_min=market_min,
             market_avg=market_avg,
@@ -163,6 +165,7 @@ class CrisisPricingService:
             orders_30d=orders_30d,
             revenue_30d=revenue_30d,
             recommended_price=recommended_price,
+            recommended_customer_price=_discounted(recommended_price, current_discount),
             decision=decision,
             basis=basis,
         )
@@ -496,6 +499,8 @@ async def _explain_with_ai(
     name: str,
     stock_qty: int,
     current_price: Decimal | None,
+    current_discount: int | None,
+    current_customer_price: Decimal | None,
     current_price_source: str | None,
     market_min: Decimal | None,
     market_avg: Decimal | None,
@@ -504,12 +509,15 @@ async def _explain_with_ai(
     orders_30d: int | None,
     revenue_30d: Decimal | None,
     recommended_price: Decimal | None,
+    recommended_customer_price: Decimal | None,
     decision: str,
     basis: str,
 ) -> str:
     fallback = _deterministic_reason(
         stock_qty=stock_qty,
         current_price=current_price,
+        current_discount=current_discount,
+        current_customer_price=current_customer_price,
         current_price_source=current_price_source,
         market_min=market_min,
         market_avg=market_avg,
@@ -518,6 +526,7 @@ async def _explain_with_ai(
         orders_30d=orders_30d,
         revenue_30d=revenue_30d,
         recommended_price=recommended_price,
+        recommended_customer_price=recommended_customer_price,
         decision=decision,
         basis=basis,
     )
@@ -526,14 +535,16 @@ async def _explain_with_ai(
     prompt = (
         "Дай короткое деловое объяснение рекомендации по цене для продавца Wildberries. "
         "Не выдумывай данные, используй только цифры ниже. Обязательно объясни формулу: "
-        "рекомендованная цена = минимальная цена релевантного конкурента минус 2%. "
+        "целевая цена покупателя = минимальная цена релевантного конкурента минус 2%; "
+        "базовая цена WB рассчитывается с учетом текущей скидки. "
         "Ответ на русском, 2-3 предложения.\n"
         f"Товар: {name}\n"
         f"Остаток: {stock_qty}\n"
-        f"Текущая цена: {_money_text(current_price)}; источник: {current_price_source or 'нет'}\n"
+        f"Текущая базовая цена WB: {_money_text(current_price)}; скидка: {current_discount if current_discount is not None else 'нет данных'}%; "
+        f"текущая цена покупателя: {_money_text(current_customer_price)}; источник: {current_price_source or 'нет'}\n"
         f"Конкуренты: минимум {_money_text(market_min)}, средняя {_money_text(market_avg)}, медиана {_money_text(market_median)}, максимум {_money_text(market_max)}\n"
         f"Заказы конкурентов за 30 дней: {orders_30d or 0}; выручка: {_money_text(revenue_30d)}\n"
-        f"Рекомендованная цена: {_money_text(recommended_price)}\n"
+        f"Рекомендованная базовая цена WB к загрузке: {_money_text(recommended_price)}; ожидаемая цена покупателя после скидки: {_money_text(recommended_customer_price)}\n"
         f"Базовая логика: {basis}"
     )
     ai_text = await _openai_text(settings, prompt) or await _gemini_text(settings, prompt)
@@ -544,6 +555,8 @@ def _deterministic_reason(
     *,
     stock_qty: int,
     current_price: Decimal | None,
+    current_discount: int | None,
+    current_customer_price: Decimal | None,
     current_price_source: str | None,
     market_min: Decimal | None,
     market_avg: Decimal | None,
@@ -552,6 +565,7 @@ def _deterministic_reason(
     orders_30d: int | None,
     revenue_30d: Decimal | None,
     recommended_price: Decimal | None,
+    recommended_customer_price: Decimal | None,
     decision: str,
     basis: str,
 ) -> str:
@@ -561,8 +575,11 @@ def _deterministic_reason(
         f"{basis} По релевантным конкурентам: минимум {_money_text(market_min)}, средняя "
         f"{_money_text(market_avg)}, медиана {_money_text(market_median)}, максимум {_money_text(market_max)}; "
         f"за 30 дней {orders_30d or 0} заказов на {_money_text(revenue_30d)}. "
-        f"Рекомендация {_money_text(recommended_price)} применима к остатку {stock_qty} шт.; "
-        f"текущая цена {_money_text(current_price)} ({current_price_source or 'источник недоступен'})."
+        f"К загрузке в WB: базовая цена {_money_text(recommended_price)} при скидке "
+        f"{current_discount if current_discount is not None else 'нет данных'}%, ожидаемая цена покупателя "
+        f"{_money_text(recommended_customer_price)}. Остаток {stock_qty} шт.; текущая базовая цена "
+        f"{_money_text(current_price)}, текущая цена покупателя {_money_text(current_customer_price)} "
+        f"({current_price_source or 'источник недоступен'})."
     )
 
 

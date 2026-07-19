@@ -967,13 +967,14 @@ function App() {
                     <dl>
                       <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
-                      <dt>Текущая цена</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price_source ?? "источник недоступен"}</small></dd>
-                      <dt>Цена со скидкой</dt><dd>{formatMoney(item.current_discounted_price)}</dd>
+                      <dt>Текущая базовая цена WB</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price_source ?? "источник недоступен"}</small></dd>
+                      <dt>Текущая цена покупателя</dt><dd>{formatMoney(item.current_discounted_price)}</dd>
                       <dt>Рынок</dt><dd>{formatMarketRange(item)}</dd>
                       <dt>Минимум - 2%</dt><dd>{formatMoney(item.competitor_price_target)} <small>расчетная цель: на 2% ниже минимального конкурента</small></dd>
                       <dt>Заказы 30 дней</dt><dd>{formatNumber(item.orders_30d)}</dd>
                       <dt>Заказы, ₽ 30 дней</dt><dd>{formatMoney(item.revenue_30d)}</dd>
-                      <dt>Новая цена</dt><dd>{formatMoney(item.recommended_price)}</dd>
+                      <dt>Новая базовая цена WB</dt><dd>{formatMoney(item.recommended_price)}</dd>
+                      <dt>Ожидаемая цена покупателя</dt><dd>{formatMoney(item.expected_discounted_price)}</dd>
                       <dt>Рост</dt><dd>{formatPercentString(item.raise_percent)}</dd>
                       <dt>Логика</dt><dd>{item.recommendation_basis ?? item.reason}</dd>
                       <dt>Обоснование</dt><dd>{item.reason}</dd>
