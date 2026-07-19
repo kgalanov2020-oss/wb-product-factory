@@ -114,9 +114,16 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/api/v1/integrations/health", tags=["system"])
-async def integrations_health() -> dict[str, bool]:
+async def integrations_health(request: Request) -> dict[str, bool]:
+    supabase_ok = False
+    if settings.supabase_configured:
+        try:
+            await request.app.state.supplier_product_repository.product_stats()
+            supabase_ok = True
+        except Exception:
+            supabase_ok = False
     return {
-        "supabase": settings.supabase_configured,
+        "supabase": supabase_ok,
         "mpstats_login": settings.mpstats_login_configured,
         "mpstats_api": settings.mpstats_api_configured,
         "aidentika": settings.aidentika_configured,

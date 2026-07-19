@@ -15,7 +15,6 @@ import {
 import "./styles.css";
 
 const RENDER_API_URL = "https://wb-product-factory-api.onrender.com";
-const LOCAL_API_URL = "http://127.0.0.1:8000";
 const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
 const ZVEZDA_PRICE_URL =
   "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing";
@@ -1046,11 +1045,10 @@ function App() {
         {page === "settings" ? <section className="panel page-panel">
           <div className="panel-title">
             <h2>Интеграции</h2>
-            <span>{apiUrl.includes("127.0.0.1") || apiUrl.includes("localhost") ? "Локальный API" : "Render API"}</span>
+            <span>Render API</span>
           </div>
           <div className="api-switcher">
             <input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} />
-            <button type="button" onClick={() => setApiUrl(LOCAL_API_URL)}>Локально</button>
             <button type="button" onClick={() => setApiUrl(RENDER_API_URL)}>Render</button>
           </div>
           {!integrations?.mpstats_api ? (

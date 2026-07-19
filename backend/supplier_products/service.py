@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from uuid import UUID
+from datetime import datetime, timedelta, timezone
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import httpx
 
@@ -106,10 +107,26 @@ class SupplierProductService:
         )
 
     async def list_products(self, limit: int, offset: int, status: str | None) -> ProductListResponse:
-        return await self._repository.list_products(limit=limit, offset=offset, status=status)
+        try:
+            return await self._repository.list_products(limit=limit, offset=offset, status=status)
+        except Exception:
+            products = await _fallback_products_from_google_sheet(self._settings, supplier="zvezda")
+            if status:
+                products = [product for product in products if product.status == status]
+            return ProductListResponse(products=products[offset : offset + limit], total=len(products))
 
     async def product_stats(self) -> ProductStatsResponse:
-        return ProductStatsResponse(**await self._repository.product_stats())
+        try:
+            return ProductStatsResponse(**await self._repository.product_stats())
+        except Exception:
+            products = await _fallback_products_from_google_sheet(self._settings, supplier="zvezda")
+            return ProductStatsResponse(
+                total=len(products),
+                missing_on_wb=sum(1 for product in products if product.status == "missing_on_wb"),
+                listed=sum(1 for product in products if product.status == "listed"),
+                analyzed=sum(1 for product in products if product.status == "analyzed"),
+                content_ready=sum(1 for product in products if product.status == "content_ready"),
+            )
 
     async def get_product(self, product_id: UUID) -> SupplierProduct | None:
         return await self._repository.get_product(product_id)
@@ -235,3 +252,51 @@ def _mpstats_query(product: SupplierProduct) -> str:
         parts.append(product.sku)
     parts.append(product.name)
     return " ".join(part for part in parts if part).strip()[:300]
+
+
+_FALLBACK_CACHE: dict[str, object] = {"expires_at": None, "products": []}
+
+
+async def _fallback_products_from_google_sheet(settings: Settings | None, supplier: str) -> list[SupplierProduct]:
+    if settings is None:
+        return []
+    now = datetime.now(timezone.utc)
+    expires_at = _FALLBACK_CACHE.get("expires_at")
+    if isinstance(expires_at, datetime) and expires_at > now:
+        return list(_FALLBACK_CACHE.get("products") or [])
+    url = f"https://docs.google.com/spreadsheets/d/{settings.zvezda_google_sheet_id}/export?format=xlsx"
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        response = await client.get(url)
+    response.raise_for_status()
+    product_inputs, mappings, _stocks = parse_zvezda_workbook(response.content, supplier)
+    listed_skus = {
+        str(mapping.manufacturer_article).strip().lower()
+        for mapping in mappings
+        if mapping.manufacturer_article and mapping.wb_article
+    }
+    products = [
+        SupplierProduct(
+            id=uuid5(NAMESPACE_URL, f"wb-product-factory:{supplier}:{product.sku or product.name}"),
+            supplier=product.supplier,
+            sku=product.sku,
+            barcode=product.barcode,
+            name=product.name,
+            category=product.category,
+            wholesale_price=product.wholesale_price,
+            retail_price=product.retail_price,
+            stock=product.stock,
+            pack_units=product.pack_units,
+            weight_grams=product.weight_grams,
+            dimensions=product.dimensions,
+            description=product.description,
+            order_quantity=product.order_quantity,
+            photo_urls=[str(url) for url in product.photo_urls],
+            source_url=str(product.source_url) if product.source_url else None,
+            status="listed" if product.sku and product.sku.strip().lower() in listed_skus else "missing_on_wb",
+            launch_score=None,
+        )
+        for product in product_inputs
+    ]
+    _FALLBACK_CACHE["products"] = products
+    _FALLBACK_CACHE["expires_at"] = now + timedelta(minutes=10)
+    return products
