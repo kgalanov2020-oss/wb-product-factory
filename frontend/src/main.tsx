@@ -1009,7 +1009,7 @@ function App() {
                       <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
                       <dt>Источник остатков</dt><dd>{formatStockSource(item)}</dd>
-                      <dt>Текущая базовая цена WB</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price_source ?? "источник недоступен"}</small></dd>
+                      <dt>Текущая базовая цена WB</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price ? (item.current_price_source ?? "WB price API") : "базовая цена недоступна"}</small></dd>
                       <dt>После скидки продавца</dt><dd>{formatMoney(item.current_seller_discounted_price)} <small>расчет из базовой цены и скидки кабинета</small></dd>
                       <dt>Цена на сайте WB</dt><dd>{formatMoney(item.current_discounted_price)} <small>именно ее сравниваем с конкурентами</small></dd>
                       <dt>Рынок</dt><dd>{formatMarketRange(item)}</dd>

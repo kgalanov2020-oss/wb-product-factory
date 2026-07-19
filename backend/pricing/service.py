@@ -140,8 +140,6 @@ class CrisisPricingService:
                 else str(public_source or "витрина WB")
             )
             current_price_row = {**current_price_row, "wb_public_card": public_payload}
-            if current_price is None:
-                current_price = public_price
 
         snapshot = await collect_mpstats_api_snapshot(
             self._settings,
