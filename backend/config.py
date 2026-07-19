@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     supabase_url: HttpUrl | None = None
+    supabase_authorization_jwt: SecretStr | None = None
     supabase_secret_key: SecretStr | None = None
     supabase_service_role_key: SecretStr | None = None
     supabase_mpstats_table: str = "mpstats_collections"
@@ -96,6 +97,8 @@ class Settings(BaseSettings):
 
     @property
     def supabase_api_secret(self) -> SecretStr | None:
+        if self.supabase_authorization_jwt:
+            return self.supabase_authorization_jwt
         if self.supabase_secret_key and not self.supabase_secret_key.get_secret_value().startswith("sb_secret_"):
             return self.supabase_secret_key
         return self.supabase_service_role_key
