@@ -275,6 +275,7 @@ function App() {
   const [pricingResult, setPricingResult] = useState<CrisisPricingResult | null>(null);
   const [pricingOffset, setPricingOffset] = useState(0);
   const [approvedPrices, setApprovedPrices] = useState<Record<number, boolean>>({});
+  const [manualPrices, setManualPrices] = useState<Record<number, string>>({});
   const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -542,6 +543,7 @@ function App() {
       setPricingResult(result);
       setPricingOffset(nextOffset);
       setApprovedPrices({});
+      setManualPrices({});
       setMessage(`Пачка ${nextOffset + 1}-${nextOffset + result.analyzed}: проверено ${result.analyzed}. Рекомендовано поднять цену: ${result.recommended}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка анализа цен");
@@ -552,14 +554,14 @@ function App() {
 
   async function dryRunApprovedPrices() {
     const items = (pricingResult?.items ?? [])
-      .filter((item) => approvedPrices[item.nm_id] && item.recommended_price)
+      .filter((item) => approvedPrices[item.nm_id] && approvedBasePrice(item))
       .map((item) => ({
         nm_id: item.nm_id,
-        price: Number(item.recommended_price),
+        price: approvedBasePrice(item)!,
         discount: item.current_discount ?? 0,
       }));
     if (!items.length) {
-      setMessage("Отметьте товары, по которым согласовано повышение цены.");
+      setMessage("Отметьте товары с рекомендацией или введите ручную базовую цену WB и поставьте галочку.");
       return;
     }
     setLoading(true);
@@ -576,6 +578,23 @@ function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function manualBasePrice(item: CrisisPriceRecommendation) {
+    const raw = manualPrices[item.nm_id]?.trim();
+    if (!raw) {
+      return null;
+    }
+    const value = Number(raw.replace(/[^\d]/g, ""));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+
+  function approvedBasePrice(item: CrisisPriceRecommendation) {
+    return manualBasePrice(item) ?? (item.recommended_price ? Number(item.recommended_price) : null);
+  }
+
+  function canApprovePrice(item: CrisisPriceRecommendation) {
+    return Boolean(approvedBasePrice(item));
   }
 
   async function loadProductAnalysis(product: SupplierProduct) {
@@ -996,14 +1015,14 @@ function App() {
                       <input
                         type="checkbox"
                         checked={Boolean(approvedPrices[item.nm_id])}
-                        disabled={item.decision !== "recommend_raise"}
+                        disabled={!canApprovePrice(item)}
                         onChange={(event) =>
                           setApprovedPrices((current) => ({ ...current, [item.nm_id]: event.target.checked }))
                         }
                       />
                       <strong>{item.name}</strong>
                     </label>
-                    <span>{formatPricingDecision(item.decision)}</span>
+                    <span>{formatPricingDecision(item.decision)}{canApprovePrice(item) ? "" : " · галочка доступна только при рекомендации или ручной цене"}</span>
                     <dl>
                       <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
@@ -1021,6 +1040,26 @@ function App() {
                       <dt>Логика</dt><dd>{item.recommendation_basis ?? item.reason}</dd>
                       <dt>Обоснование</dt><dd>{item.reason}</dd>
                     </dl>
+                    <div className="manual-price">
+                      <label>
+                        <span>Ручная базовая цена WB</span>
+                        <input
+                          inputMode="numeric"
+                          placeholder={item.current_price ? `выше ${formatMoney(item.current_price)}` : "например 1990"}
+                          value={manualPrices[item.nm_id] ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value.replace(/[^\d]/g, "");
+                            setManualPrices((current) => ({ ...current, [item.nm_id]: value }));
+                            if (!value) {
+                              setApprovedPrices((current) => ({ ...current, [item.nm_id]: false }));
+                            }
+                          }}
+                        />
+                      </label>
+                      <small>
+                        Для ручного повышения впиши базовую цену из кабинета WB. После этого можно поставить галочку и нажать “Проверить согласованные”.
+                      </small>
+                    </div>
                     {(item.competitors ?? []).length ? (
                       <div className="pricing-competitors">
                         <strong>Конкуренты</strong>

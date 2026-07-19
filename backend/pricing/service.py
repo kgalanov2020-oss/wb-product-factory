@@ -168,6 +168,9 @@ class CrisisPricingService:
             current_discounted=current_discounted,
             current_discount=current_discount,
             market_min=market_min,
+            market_avg=market_avg,
+            market_median=market_median,
+            market_max=market_max,
             max_raise_percent=request.max_raise_percent,
             competitor_count=len(competitors),
             orders_30d=orders_30d,
@@ -522,6 +525,9 @@ def _recommend_price(
     current_discounted: Decimal | None,
     current_discount: int | None,
     market_min: Decimal | None,
+    market_avg: Decimal | None,
+    market_median: Decimal | None,
+    market_max: Decimal | None,
     max_raise_percent: Decimal,
     competitor_count: int,
     orders_30d: int | None,
@@ -549,6 +555,16 @@ def _recommend_price(
             f"Есть рыночная цель: цена покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}), но WB не вернул текущую скидку кабинета. Загружать базовую цену без скидки нельзя.",
         )
     max_customer_price = current_customer_price * (Decimal("1") + max_raise_percent / Decimal("100"))
+    scarcity_target = None
+    if stock_qty <= 2:
+        market_anchor = max(
+            [value for value in (market_median, market_avg, market_max) if value is not None],
+            default=None,
+        )
+        scarcity_floor = current_customer_price * Decimal("1.15")
+        scarcity_target = max([value for value in (market_anchor, scarcity_floor) if value is not None], default=None)
+    if scarcity_target is not None:
+        target_price = max(target_price, scarcity_target)
     candidate_customer_price = min(target_price, max_customer_price)
     if candidate_customer_price <= current_customer_price * Decimal("1.03"):
         return current_price, "hold", "Не меняем: цена покупателя на 2% ниже минимального конкурента дает рост меньше 3%."
@@ -558,6 +574,11 @@ def _recommend_price(
     if candidate_customer_price < target_price:
         cap_note = f" Рост ограничен лимитом {max_raise_percent}% от текущей цены, поэтому ниже рыночной цели."
     stock_note = " Остаток небольшой, повышение особенно актуально." if stock_qty <= 5 else ""
+    scarcity_note = (
+        " Так как остаток 1-2 штуки, цель поднята до дефицитного уровня: ориентир по рынку или +15% к текущей цене покупателя."
+        if stock_qty <= 2 and scarcity_target is not None
+        else ""
+    )
     candidate_base_price = _base_price_for_customer_price(
         candidate_customer_price,
         current_discount,
@@ -567,7 +588,7 @@ def _recommend_price(
     return (
         _round_price(candidate_base_price),
         "recommend_raise",
-        f"Цель: поставить цену покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}).{cap_note}{stock_note}",
+        f"Цель: поставить цену покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(_target_from_min(market_min))}).{scarcity_note}{cap_note}{stock_note}",
     )
 
 
