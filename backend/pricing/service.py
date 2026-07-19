@@ -49,7 +49,9 @@ class CrisisPricingService:
         if not listed:
             try:
                 listed = await _listed_from_wb(wb_client, request)
-            except WBApiRateLimitError:
+            except Exception as exc:
+                if not _looks_like_wb_rate_limit(exc):
+                    raise
                 listed = await _listed_from_google_stock_sheet(self._settings, request)
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
@@ -320,6 +322,11 @@ def _csv_rows(content: str) -> list[dict[str, str]]:
 
 def _norm_key(value: Any) -> str:
     return str(value or "").strip().lower()
+
+
+def _looks_like_wb_rate_limit(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return isinstance(exc, WBApiRateLimitError) or "429" in text or "too many requests" in text or "wb api временно" in text
 
 
 def _query(row: dict[str, Any]) -> str:
