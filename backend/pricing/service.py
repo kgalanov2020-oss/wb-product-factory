@@ -143,6 +143,7 @@ class CrisisPricingService:
         recommended_price, decision, basis = _recommend_price(
             current_price=current_price,
             current_discounted=current_discounted,
+            current_discount=current_discount,
             market_min=market_min,
             max_raise_percent=request.max_raise_percent,
             competitor_count=len(competitors),
@@ -412,6 +413,7 @@ def _current_prices(row: dict[str, Any]) -> tuple[Decimal | None, int | None, De
 def _recommend_price(
     current_price: Decimal | None,
     current_discounted: Decimal | None,
+    current_discount: int | None,
     market_min: Decimal | None,
     max_raise_percent: Decimal,
     competitor_count: int,
@@ -426,26 +428,28 @@ def _recommend_price(
     target_price = _target_from_min(market_min)
     if target_price is None:
         return None, "skip", "Нет минимальной цены конкурента."
-    if current_price is None or current_price <= 0:
+    current_customer_price = current_discounted or current_price
+    if current_customer_price is None or current_customer_price <= 0:
         return (
-            _round_price(target_price),
+            _round_price(_base_price_for_customer_price(target_price, current_discount)),
             "recommend_raise",
-            f"Цель: поставить цену на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}). Текущая цена WB временно недоступна, перед загрузкой нужна ручная проверка.",
+            f"Цель: поставить цену покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}). Текущая цена WB временно недоступна, перед загрузкой нужна ручная проверка.",
         )
-    max_price = current_price * (Decimal("1") + max_raise_percent / Decimal("100"))
-    candidate = min(target_price, max_price)
-    if current_discounted and candidate <= current_discounted * Decimal("1.03"):
-        return current_price, "hold", "Не меняем: цена на 2% ниже минимального конкурента дает рост меньше 3%."
-    if candidate <= current_price:
-        return current_price, "hold", "Не меняем: текущая цена уже не ниже расчетной рыночной цели."
+    max_customer_price = current_customer_price * (Decimal("1") + max_raise_percent / Decimal("100"))
+    candidate_customer_price = min(target_price, max_customer_price)
+    if candidate_customer_price <= current_customer_price * Decimal("1.03"):
+        return current_price, "hold", "Не меняем: цена покупателя на 2% ниже минимального конкурента дает рост меньше 3%."
+    if candidate_customer_price <= current_customer_price:
+        return current_price, "hold", "Не меняем: текущая цена покупателя уже не ниже расчетной рыночной цели."
     cap_note = ""
-    if candidate < target_price:
+    if candidate_customer_price < target_price:
         cap_note = f" Рост ограничен лимитом {max_raise_percent}% от текущей цены, поэтому ниже рыночной цели."
     stock_note = " Остаток небольшой, повышение особенно актуально." if stock_qty <= 5 else ""
+    candidate_base_price = _base_price_for_customer_price(candidate_customer_price, current_discount)
     return (
-        _round_price(candidate),
+        _round_price(candidate_base_price),
         "recommend_raise",
-        f"Цель: поставить цену на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}).{cap_note}{stock_note}",
+        f"Цель: поставить цену покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}).{cap_note}{stock_note}",
     )
 
 
@@ -475,6 +479,15 @@ def _round_price(value: Decimal) -> Decimal:
     if rounded >= 100:
         return (rounded / Decimal("10")).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * Decimal("10") - Decimal("1")
     return rounded
+
+
+def _base_price_for_customer_price(customer_price: Decimal, discount: int | None) -> Decimal:
+    if not discount:
+        return customer_price
+    factor = (Decimal("100") - Decimal(discount)) / Decimal("100")
+    if factor <= 0:
+        return customer_price
+    return customer_price / factor
 
 
 async def _explain_with_ai(
