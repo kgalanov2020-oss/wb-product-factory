@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     supabase_url: HttpUrl | None = None
+    supabase_secret_key: SecretStr | None = None
     supabase_service_role_key: SecretStr | None = None
     supabase_mpstats_table: str = "mpstats_collections"
     supabase_product_content_jobs_table: str = "product_content_jobs"
@@ -51,6 +52,10 @@ class Settings(BaseSettings):
     wb_api_token: SecretStr | None = None
     wb_prices_base_url: HttpUrl = HttpUrl("https://discounts-prices-api.wildberries.ru")
     wb_statistics_base_url: HttpUrl = HttpUrl("https://statistics-api.wildberries.ru")
+
+    def model_post_init(self, __context: object) -> None:
+        if self.supabase_secret_key:
+            self.supabase_service_role_key = self.supabase_secret_key
 
     @property
     def supabase_configured(self) -> bool:
