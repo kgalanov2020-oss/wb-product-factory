@@ -87,7 +87,7 @@ class Settings(BaseSettings):
 
     def __init__(self, **values: object) -> None:
         super().__init__(**values)
-        if self.supabase_secret_key:
+        if self.supabase_secret_key and not self.supabase_secret_key.get_secret_value().startswith("sb_secret_"):
             self.supabase_service_role_key = self.supabase_secret_key
 
     @property
