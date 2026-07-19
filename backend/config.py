@@ -78,7 +78,8 @@ class Settings(BaseSettings):
     wb_prices_base_url: HttpUrl = HttpUrl("https://discounts-prices-api.wildberries.ru")
     wb_statistics_base_url: HttpUrl = HttpUrl("https://statistics-api.wildberries.ru")
 
-    def model_post_init(self, __context: object) -> None:
+    def __init__(self, **values: object) -> None:
+        super().__init__(**values)
         if self.supabase_secret_key:
             self.supabase_service_role_key = self.supabase_secret_key
 
