@@ -106,7 +106,7 @@ async def _request_with_retry(
     method: str,
     url: str,
     *,
-    retries: int = 4,
+    retries: int = 8,
     **kwargs: Any,
 ) -> httpx.Response:
     for attempt in range(retries + 1):
@@ -117,21 +117,21 @@ async def _request_with_retry(
 
         retry_after = response.headers.get("Retry-After")
         if attempt >= retries:
-            raise WBApiRateLimitError("WB API временно ограничил запросы. Повтори расчет через 1-2 минуты.") from None
+            raise WBApiRateLimitError("WB API временно ограничил запросы. Расчет не отменен из-за ошибки данных, но WB не дал ответ после нескольких повторов.") from None
 
         delay = _retry_delay(retry_after, attempt)
         await asyncio.sleep(delay)
 
-    raise WBApiRateLimitError("WB API временно ограничил запросы. Повтори расчет через 1-2 минуты.")
+    raise WBApiRateLimitError("WB API временно ограничил запросы. Расчет не отменен из-за ошибки данных, но WB не дал ответ после нескольких повторов.")
 
 
 def _retry_delay(retry_after: str | None, attempt: int) -> float:
     if retry_after:
         try:
-            return min(max(float(retry_after), 1.0), 60.0)
+            return min(max(float(retry_after), 1.0), 120.0)
         except ValueError:
             pass
-    return min(2.0 * (attempt + 1), 12.0)
+    return min(5.0 * (attempt + 1), 30.0)
 
 
 def _chunks(values: list[int], size: int) -> list[list[int]]:
