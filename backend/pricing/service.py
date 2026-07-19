@@ -55,7 +55,7 @@ class CrisisPricingService:
                 listed = await _listed_from_google_stock_sheet(self._settings, request)
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
-            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=1)
+            prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=4)
         except WBApiRateLimitError:
             prices_by_nm = {}
 
@@ -434,9 +434,9 @@ def _recommend_price(
     current_customer_price = current_discounted or current_price
     if current_customer_price is None or current_customer_price <= 0:
         return (
-            _round_price(_base_price_for_customer_price(target_price, current_discount)),
-            "recommend_raise",
-            f"Цель: поставить цену покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}). Текущая цена WB временно недоступна, перед загрузкой нужна ручная проверка.",
+            None,
+            "skip",
+            f"Есть рыночная цель: цена покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}), но текущая цена и скидка WB недоступны. Загружать цену без этой проверки нельзя.",
         )
     max_customer_price = current_customer_price * (Decimal("1") + max_raise_percent / Decimal("100"))
     candidate_customer_price = min(target_price, max_customer_price)
