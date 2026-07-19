@@ -552,14 +552,18 @@ function App() {
     }
   }
 
-  async function dryRunApprovedPrices() {
-    const items = (pricingResult?.items ?? [])
+  function approvedPriceItems() {
+    return (pricingResult?.items ?? [])
       .filter((item) => approvedPrices[item.nm_id] && approvedBasePrice(item))
       .map((item) => ({
         nm_id: item.nm_id,
         price: approvedBasePrice(item)!,
         discount: item.current_discount ?? 0,
       }));
+  }
+
+  async function dryRunApprovedPrices() {
+    const items = approvedPriceItems();
     if (!items.length) {
       setMessage("Отметьте товары с рекомендацией или введите ручную базовую цену WB и поставьте галочку.");
       return;
@@ -571,10 +575,39 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dry_run: true, items }),
       });
-      setMessage(`Проверка готова: подготовлено ${items.length} цен. В WB еще ничего не отправлено.`);
+      setMessage(`Проверка без изменения WB готова: подготовлено ${items.length} цен. В WB ничего не изменено.`);
       console.info(result);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка проверки цен");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function uploadApprovedPrices() {
+    const items = approvedPriceItems();
+    if (!items.length) {
+      setMessage("Сначала отметьте товары для изменения цены.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Отправить в WB ${items.length} цен? Это реальное изменение цен в кабинете Wildberries.`,
+    );
+    if (!confirmed) {
+      setMessage("Отправка цен отменена. В WB ничего не изменено.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await request<{ uploaded: number; payload: unknown }>("/api/v1/pricing/crisis/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: false, items }),
+      });
+      setMessage(`Цены отправлены в WB: ${result.uploaded ?? items.length} позиций. Проверь статус задачи в кабинете WB.`);
+      console.info(result);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка отправки цен в WB");
     } finally {
       setLoading(false);
     }
@@ -998,7 +1031,8 @@ function App() {
           <div className="pricing-toolbar">
             <button onClick={() => analyzeCrisisPricing(0)} disabled={loading}>Проанализировать цены</button>
             <button onClick={() => analyzeCrisisPricing(pricingOffset + PRICING_BATCH_SIZE)} disabled={loading}>Следующая пачка</button>
-            <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить согласованные</button>
+            <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить без изменения WB</button>
+            <button className="danger-action" onClick={uploadApprovedPrices} disabled={loading}>Отправить цены в WB</button>
           </div>
           {!integrations?.wb_api ? (
             <div className="hint">Для анализа цен нужен WB_API_TOKEN на backend: цены, остатки и аналитика.</div>
@@ -1057,7 +1091,7 @@ function App() {
                         />
                       </label>
                       <small>
-                        Для ручного повышения впиши базовую цену из кабинета WB. После этого можно поставить галочку и нажать “Проверить согласованные”.
+                        Для ручного повышения впиши базовую цену из кабинета WB. После этого можно поставить галочку, проверить пакет без изменения WB или сразу отправить цены в WB.
                       </small>
                     </div>
                     {(item.competitors ?? []).length ? (
