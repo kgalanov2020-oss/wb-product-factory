@@ -145,6 +145,7 @@ type CrisisPriceRecommendation = {
   stock_qty: number;
   current_price?: string | null;
   current_discount?: number | null;
+  current_seller_discounted_price?: string | null;
   current_discounted_price?: string | null;
   competitor_count: number;
   competitor_price_min?: string | null;
@@ -1009,7 +1010,8 @@ function App() {
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
                       <dt>Источник остатков</dt><dd>{formatStockSource(item)}</dd>
                       <dt>Текущая базовая цена WB</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price_source ?? "источник недоступен"}</small></dd>
-                      <dt>Текущая цена покупателя</dt><dd>{formatMoney(item.current_discounted_price)}</dd>
+                      <dt>После скидки продавца</dt><dd>{formatMoney(item.current_seller_discounted_price)} <small>расчет из базовой цены и скидки кабинета</small></dd>
+                      <dt>Цена на сайте WB</dt><dd>{formatMoney(item.current_discounted_price)} <small>именно ее сравниваем с конкурентами</small></dd>
                       <dt>Рынок</dt><dd>{formatMarketRange(item)}</dd>
                       <dt>Минимум - 2%</dt><dd>{formatMoney(item.competitor_price_target)} <small>расчетная цель: на 2% ниже минимального конкурента</small></dd>
                       <dt>Заказы 30 дней</dt><dd>{formatNumber(item.orders_30d)}</dd>

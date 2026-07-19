@@ -124,15 +124,16 @@ class CrisisPricingService:
         name = row.get("product_name") or row.get("mapping_name") or vendor_code or str(nm_id)
         stock_qty = int(row.get("stock_qty") or 0)
         current_price_row = prices_by_nm.get(nm_id, {})
-        current_price, current_discount, current_discounted = _current_prices(current_price_row)
+        current_price, current_discount, seller_discounted = _current_prices(current_price_row)
+        current_discounted = seller_discounted
         current_price_source = "WB price API" if current_price is not None else None
-        if current_price is None:
-            public_price, public_payload = await _safe_public_price(nm_id)
-            if public_price is not None:
+        public_price, public_payload = await _safe_public_price(nm_id)
+        if public_price is not None:
+            current_discounted = public_price
+            current_price_source = "WB price API + витрина WB" if current_price is not None else "витрина WB"
+            current_price_row = {**current_price_row, "wb_public_card": public_payload}
+            if current_price is None:
                 current_price = public_price
-                current_discounted = public_price
-                current_price_source = "публичная карточка WB"
-                current_price_row = {"source": "wb_public_card", "data": public_payload}
 
         snapshot = await collect_mpstats_api_snapshot(
             self._settings,
@@ -181,7 +182,12 @@ class CrisisPricingService:
             orders_30d=orders_30d,
             revenue_30d=revenue_30d,
             recommended_price=recommended_price,
-            recommended_customer_price=_discounted(recommended_price, current_discount),
+            recommended_customer_price=_expected_customer_price(
+                recommended_price,
+                current_price,
+                current_discounted,
+                current_discount,
+            ),
             decision=decision,
             basis=basis,
         )
@@ -203,6 +209,7 @@ class CrisisPricingService:
             current_price=current_price,
             current_discount=current_discount,
             current_discounted_price=current_discounted,
+            current_seller_discounted_price=seller_discounted,
             competitor_count=len(competitors),
             competitor_price_min=market_min,
             competitor_price_avg=market_avg,
@@ -213,7 +220,7 @@ class CrisisPricingService:
             revenue_30d=revenue_30d,
             recommended_price=recommended_price,
             raise_percent=raise_percent,
-            expected_discounted_price=_discounted(recommended_price, current_discount),
+            expected_discounted_price=_expected_customer_price(recommended_price, current_price, current_discounted, current_discount),
             decision=decision,
             reason=reason,
             recommendation_basis=basis,
@@ -515,7 +522,12 @@ def _recommend_price(
     if candidate_customer_price < target_price:
         cap_note = f" Рост ограничен лимитом {max_raise_percent}% от текущей цены, поэтому ниже рыночной цели."
     stock_note = " Остаток небольшой, повышение особенно актуально." if stock_qty <= 5 else ""
-    candidate_base_price = _base_price_for_customer_price(candidate_customer_price, current_discount)
+    candidate_base_price = _base_price_for_customer_price(
+        candidate_customer_price,
+        current_discount,
+        current_price=current_price,
+        current_customer_price=current_customer_price,
+    )
     return (
         _round_price(candidate_base_price),
         "recommend_raise",
@@ -551,13 +563,38 @@ def _round_price(value: Decimal) -> Decimal:
     return rounded
 
 
-def _base_price_for_customer_price(customer_price: Decimal, discount: int | None) -> Decimal:
+def _base_price_for_customer_price(
+    customer_price: Decimal,
+    discount: int | None,
+    *,
+    current_price: Decimal | None = None,
+    current_customer_price: Decimal | None = None,
+) -> Decimal:
+    if current_price and current_price > 0 and current_customer_price and current_customer_price > 0:
+        factor = current_customer_price / current_price
+        if Decimal("0.03") <= factor <= Decimal("1"):
+            return customer_price / factor
     if not discount:
         return customer_price
     factor = (Decimal("100") - Decimal(discount)) / Decimal("100")
     if factor <= 0:
         return customer_price
     return customer_price / factor
+
+
+def _expected_customer_price(
+    recommended_price: Decimal | None,
+    current_price: Decimal | None,
+    current_customer_price: Decimal | None,
+    current_discount: int | None,
+) -> Decimal | None:
+    if recommended_price is None:
+        return None
+    if current_price and current_price > 0 and current_customer_price and current_customer_price > 0:
+        factor = current_customer_price / current_price
+        if Decimal("0.03") <= factor <= Decimal("1"):
+            return (recommended_price * factor).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return _discounted(recommended_price, current_discount)
 
 
 async def _explain_with_ai(

@@ -38,6 +38,7 @@ class CrisisPriceRecommendation(BaseModel):
     stock_qty: int
     current_price: Decimal | None = None
     current_discount: int | None = None
+    current_seller_discounted_price: Decimal | None = None
     current_discounted_price: Decimal | None = None
     competitor_count: int
     competitor_price_min: Decimal | None = None
