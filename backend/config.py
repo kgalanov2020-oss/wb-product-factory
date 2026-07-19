@@ -96,7 +96,9 @@ class Settings(BaseSettings):
 
     @property
     def supabase_api_secret(self) -> SecretStr | None:
-        return self.supabase_secret_key or self.supabase_service_role_key
+        if self.supabase_secret_key and not self.supabase_secret_key.get_secret_value().startswith("sb_secret_"):
+            return self.supabase_secret_key
+        return self.supabase_service_role_key
 
     @property
     def mpstats_login_configured(self) -> bool:
