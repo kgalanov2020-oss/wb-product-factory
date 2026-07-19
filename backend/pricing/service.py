@@ -195,10 +195,7 @@ class CrisisPricingService:
 
 
 async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest) -> list[dict[str, Any]]:
-    stocks, prices = await asyncio.gather(
-        wb_client.list_stocks(),
-        _safe_price_list(wb_client),
-    )
+    stocks = await wb_client.list_stocks()
     stock_by_nm: dict[str, dict[str, Any]] = {}
     for stock in stocks:
         nm_id = _safe_int(stock.get("nmId") or stock.get("nmID") or stock.get("nm_id"))
@@ -227,24 +224,15 @@ async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest)
         stock_qty = int(row.get("stock_qty") or 0)
         if request.only_with_stock and stock_qty < request.min_stock:
             continue
-        price_row = prices.get(int(key), {})
-        vendor_code = price_row.get("vendorCode") or price_row.get("vendor_code") or row.get("seller_article")
+        vendor_code = row.get("seller_article")
         row["seller_article"] = vendor_code
         row["manufacturer_article"] = vendor_code or row.get("manufacturer_article")
-        row["mapping_name"] = price_row.get("subjectName") or row.get("mapping_name")
+        row["mapping_name"] = row.get("mapping_name")
         row["product_name"] = row.get("product_name") or row.get("mapping_name") or vendor_code or key
-        row["raw"]["price"] = price_row
         rows.append(row)
         if len(rows) >= request.limit:
             break
     return rows
-
-
-async def _safe_price_list(wb_client: WBApiClient) -> dict[int, dict[str, Any]]:
-    try:
-        return await wb_client.list_prices(limit=1000)
-    except WBApiRateLimitError:
-        return {}
 
 
 def _query(row: dict[str, Any]) -> str:
