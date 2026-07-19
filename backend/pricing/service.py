@@ -490,6 +490,12 @@ def _recommend_price(
             "skip",
             f"Есть рыночная цель: цена покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}), но текущая цена и скидка WB недоступны. Загружать цену без этой проверки нельзя.",
         )
+    if current_discount is None:
+        return (
+            None,
+            "skip",
+            f"Есть рыночная цель: цена покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}), но WB не вернул текущую скидку кабинета. Загружать базовую цену без скидки нельзя.",
+        )
     max_customer_price = current_customer_price * (Decimal("1") + max_raise_percent / Decimal("100"))
     candidate_customer_price = min(target_price, max_customer_price)
     if candidate_customer_price <= current_customer_price * Decimal("1.03"):
