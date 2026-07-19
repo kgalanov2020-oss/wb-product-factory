@@ -72,6 +72,7 @@ class CrisisPricingService:
             prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids, retries=6)
         except WBApiRateLimitError:
             prices_by_nm = {}
+        prices_by_nm = await _fill_missing_wb_prices(wb_client, nm_ids, prices_by_nm)
 
         semaphore = asyncio.Semaphore(3)
 
@@ -260,6 +261,28 @@ async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest)
         if len(rows) >= request.limit:
             break
     return rows
+
+
+async def _fill_missing_wb_prices(
+    wb_client: WBApiClient,
+    nm_ids: list[int],
+    prices_by_nm: dict[int, dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    missing = [nm_id for nm_id in dict.fromkeys(nm_ids) if nm_id not in prices_by_nm]
+    if not missing:
+        return prices_by_nm
+    for nm_id in missing:
+        try:
+            item = await wb_client.list_price_by_nm_id(nm_id, retries=3)
+        except WBApiRateLimitError:
+            await asyncio.sleep(5.0)
+            continue
+        except Exception:
+            continue
+        if item:
+            prices_by_nm[nm_id] = item
+        await asyncio.sleep(1.2)
+    return prices_by_nm
 
 
 def _merge_listed_rows(primary: list[dict[str, Any]], secondary: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:

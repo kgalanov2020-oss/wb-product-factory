@@ -78,6 +78,21 @@ class WBApiClient:
                 await asyncio.sleep(0.65)
         return result
 
+    async def list_price_by_nm_id(self, nm_id: int, retries: int = 8) -> dict[str, Any] | None:
+        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+            response = await _request_with_retry(
+                client,
+                "GET",
+                f"{self._prices_base_url}/api/v2/list/goods/filter",
+                retries=retries,
+                headers=self._headers,
+                params={"limit": 1, "offset": 0, "filterNmID": nm_id},
+            )
+            payload = response.json()
+        items = ((payload.get("data") or {}).get("listGoods") or []) if isinstance(payload, dict) else []
+        first = items[0] if items and isinstance(items[0], dict) else None
+        return first
+
     async def list_stocks(self, date_from: date | None = None, retries: int = 8) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await _request_with_retry(
