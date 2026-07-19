@@ -35,12 +35,15 @@ class CrisisPricingService:
 
     async def analyze(self, request: CrisisPricingRequest) -> CrisisPricingResult:
         wb_client = self._wb_client or WBApiClient(self._settings)
-        listed = await self._repository.list_listed_products_with_stock(
-            limit=request.limit,
-            supplier=request.supplier,
-            min_stock=request.min_stock,
-            only_with_stock=request.only_with_stock,
-        )
+        try:
+            listed = await self._repository.list_listed_products_with_stock(
+                limit=request.limit,
+                supplier=request.supplier,
+                min_stock=request.min_stock,
+                only_with_stock=request.only_with_stock,
+            )
+        except Exception:
+            listed = await _listed_from_wb(wb_client, request)
         nm_ids = [int(row["wb_article"]) for row in listed if row.get("wb_article")]
         try:
             prices_by_nm = await wb_client.list_prices_by_nm_ids(nm_ids)
@@ -189,6 +192,59 @@ class CrisisPricingService:
             competitors=competitors[:10],
             raw={"price_row": current_price_row, "stock_row": row, "mpstats": snapshot.model_dump(mode="json")},
         )
+
+
+async def _listed_from_wb(wb_client: WBApiClient, request: CrisisPricingRequest) -> list[dict[str, Any]]:
+    stocks, prices = await asyncio.gather(
+        wb_client.list_stocks(),
+        _safe_price_list(wb_client),
+    )
+    stock_by_nm: dict[str, dict[str, Any]] = {}
+    for stock in stocks:
+        nm_id = _safe_int(stock.get("nmId") or stock.get("nmID") or stock.get("nm_id"))
+        if not nm_id:
+            continue
+        key = str(nm_id)
+        stock_qty = _safe_int(stock.get("quantity") or stock.get("stock") or stock.get("quantityFull")) or 0
+        existing = stock_by_nm.setdefault(
+            key,
+            {
+                "wb_article": key,
+                "seller_article": stock.get("supplierArticle") or stock.get("vendorCode"),
+                "manufacturer_article": stock.get("supplierArticle") or stock.get("vendorCode"),
+                "brand": stock.get("brand"),
+                "subject": stock.get("subject"),
+                "mapping_name": stock.get("subject") or stock.get("supplierArticle") or key,
+                "product_name": stock.get("subject") or stock.get("supplierArticle") or key,
+                "stock_qty": 0,
+                "raw": {"stocks": []},
+            },
+        )
+        existing["stock_qty"] += stock_qty
+        existing["raw"]["stocks"].append(stock)
+    rows: list[dict[str, Any]] = []
+    for key, row in stock_by_nm.items():
+        stock_qty = int(row.get("stock_qty") or 0)
+        if request.only_with_stock and stock_qty < request.min_stock:
+            continue
+        price_row = prices.get(int(key), {})
+        vendor_code = price_row.get("vendorCode") or price_row.get("vendor_code") or row.get("seller_article")
+        row["seller_article"] = vendor_code
+        row["manufacturer_article"] = vendor_code or row.get("manufacturer_article")
+        row["mapping_name"] = price_row.get("subjectName") or row.get("mapping_name")
+        row["product_name"] = row.get("product_name") or row.get("mapping_name") or vendor_code or key
+        row["raw"]["price"] = price_row
+        rows.append(row)
+        if len(rows) >= request.limit:
+            break
+    return rows
+
+
+async def _safe_price_list(wb_client: WBApiClient) -> dict[int, dict[str, Any]]:
+    try:
+        return await wb_client.list_prices(limit=1000)
+    except WBApiRateLimitError:
+        return {}
 
 
 def _query(row: dict[str, Any]) -> str:
