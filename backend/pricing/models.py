@@ -49,6 +49,7 @@ class CrisisPriceRecommendation(BaseModel):
     orders_30d: int | None = None
     revenue_30d: Decimal | None = None
     recommended_price: Decimal | None = None
+    recommended_discount: int | None = None
     raise_percent: Decimal | None = None
     expected_discounted_price: Decimal | None = None
     decision: Literal["recommend_raise", "hold", "skip"] = "skip"
@@ -82,3 +83,28 @@ class PriceUploadResult(BaseModel):
     dry_run: bool
     uploaded: int
     payload: dict[str, Any]
+
+
+class PriceMonitorItem(BaseModel):
+    nm_id: int
+    expected_site_price: Decimal | None = None
+    current_base_price: Decimal | None = None
+    current_seller_discount: int | None = None
+    current_seller_price: Decimal | None = None
+    current_site_price: Decimal | None = None
+    delta: Decimal | None = None
+    status: Literal["ok", "wait", "no_data"] = "no_data"
+    source: str | None = None
+
+
+class PriceMonitorRequest(BaseModel):
+    nm_ids: list[int] = Field(min_length=1, max_length=100)
+    expected_site_prices: dict[int, Decimal] = Field(default_factory=dict)
+    tolerance_percent: Decimal = Field(default=Decimal("3"), ge=0, le=50)
+
+
+class PriceMonitorResult(BaseModel):
+    checked: int
+    ok: int
+    wait: int
+    items: list[PriceMonitorItem]

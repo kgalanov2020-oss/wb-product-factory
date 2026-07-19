@@ -4,7 +4,7 @@ import asyncio
 import csv
 import io
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 from typing import Any
 
 import httpx
@@ -20,6 +20,9 @@ from .models import (
     CrisisPriceRecommendation,
     CrisisPricingRequest,
     CrisisPricingResult,
+    PriceMonitorItem,
+    PriceMonitorRequest,
+    PriceMonitorResult,
     PriceUploadRequest,
     PriceUploadResult,
 )
@@ -113,6 +116,46 @@ class CrisisPricingService:
         result = await wb_client.upload_prices(payload["data"])
         return PriceUploadResult(dry_run=False, uploaded=len(request.items), payload=result)
 
+    async def monitor_prices(self, request: PriceMonitorRequest) -> PriceMonitorResult:
+        wb_client = self._wb_client or WBApiClient(self._settings)
+        prices_by_nm = await wb_client.list_prices_by_nm_ids(request.nm_ids, retries=2)
+        items: list[PriceMonitorItem] = []
+        for nm_id in request.nm_ids:
+            row = prices_by_nm.get(nm_id, {})
+            current_price, current_discount, seller_discounted = _current_prices(row)
+            site_price, public_payload = await _safe_public_price(nm_id)
+            expected = request.expected_site_prices.get(nm_id)
+            delta = None
+            status_value = "no_data"
+            if site_price is not None and expected is not None and expected > 0:
+                delta = ((site_price - expected) / expected * Decimal("100")).quantize(
+                    Decimal("0.1"),
+                    rounding=ROUND_HALF_UP,
+                )
+                status_value = "ok" if abs(delta) <= request.tolerance_percent else "wait"
+            elif site_price is not None:
+                status_value = "ok"
+            items.append(
+                PriceMonitorItem(
+                    nm_id=nm_id,
+                    expected_site_price=expected,
+                    current_base_price=current_price,
+                    current_seller_discount=current_discount,
+                    current_seller_price=seller_discounted,
+                    current_site_price=site_price,
+                    delta=delta,
+                    status=status_value,
+                    source=str(public_payload.get("source") or "WB карточка"),
+                )
+            )
+            await asyncio.sleep(0.25)
+        return PriceMonitorResult(
+            checked=len(items),
+            ok=sum(1 for item in items if item.status == "ok"),
+            wait=sum(1 for item in items if item.status == "wait"),
+            items=items,
+        )
+
     async def _analyze_row(
         self,
         row: dict[str, Any],
@@ -163,9 +206,10 @@ class CrisisPricingService:
         orders_30d = sum((point.orders_30d or 0) for point in competitors) if competitors else None
         revenue_30d = sum((point.revenue_30d or Decimal("0")) for point in competitors) if competitors else None
 
-        recommended_price, decision, basis = _recommend_price(
+        recommended_price, recommended_discount, decision, basis = _recommend_price(
             current_price=current_price,
             current_discounted=current_discounted,
+            current_seller_discounted=seller_discounted,
             current_discount=current_discount,
             market_min=market_min,
             market_avg=market_avg,
@@ -191,18 +235,29 @@ class CrisisPricingService:
             orders_30d=orders_30d,
             revenue_30d=revenue_30d,
             recommended_price=recommended_price,
+            recommended_discount=recommended_discount,
             recommended_customer_price=_expected_customer_price(
                 recommended_price,
+                recommended_discount,
                 current_price,
                 current_discounted,
+                seller_discounted,
                 current_discount,
             ),
             decision=decision,
             basis=basis,
         )
         raise_percent = None
-        if recommended_price is not None and current_price and current_price > 0:
-            raise_percent = ((recommended_price - current_price) / current_price * Decimal("100")).quantize(
+        expected_customer_price = _expected_customer_price(
+            recommended_price,
+            recommended_discount,
+            current_price,
+            current_discounted,
+            seller_discounted,
+            current_discount,
+        )
+        if expected_customer_price is not None and current_discounted and current_discounted > 0:
+            raise_percent = ((expected_customer_price - current_discounted) / current_discounted * Decimal("100")).quantize(
                 Decimal("0.1"),
                 rounding=ROUND_HALF_UP,
             )
@@ -228,8 +283,9 @@ class CrisisPricingService:
             orders_30d=orders_30d,
             revenue_30d=revenue_30d,
             recommended_price=recommended_price,
+            recommended_discount=recommended_discount,
             raise_percent=raise_percent,
-            expected_discounted_price=_expected_customer_price(recommended_price, current_price, current_discounted, current_discount),
+            expected_discounted_price=expected_customer_price,
             decision=decision,
             reason=reason,
             recommendation_basis=basis,
@@ -523,6 +579,7 @@ def _current_prices(row: dict[str, Any]) -> tuple[Decimal | None, int | None, De
 def _recommend_price(
     current_price: Decimal | None,
     current_discounted: Decimal | None,
+    current_seller_discounted: Decimal | None,
     current_discount: int | None,
     market_min: Decimal | None,
     market_avg: Decimal | None,
@@ -532,18 +589,19 @@ def _recommend_price(
     competitor_count: int,
     orders_30d: int | None,
     stock_qty: int,
-) -> tuple[Decimal | None, str, str]:
+) -> tuple[Decimal | None, int | None, str, str]:
     if market_min is None:
-        return None, "skip", "Нет цен конкурентов MPStats."
+        return None, None, "skip", "Нет цен конкурентов MPStats."
     if competitor_count == 0 or not orders_30d or orders_30d <= 0:
-        return None, "skip", "Нет подтвержденного спроса по конкурентам за 30 дней."
+        return None, None, "skip", "Нет подтвержденного спроса по конкурентам за 30 дней."
 
     target_price = _target_from_min(market_min)
     if target_price is None:
-        return None, "skip", "Нет минимальной цены конкурента."
+        return None, None, "skip", "Нет минимальной цены конкурента."
     current_customer_price = current_discounted or current_price
     if current_customer_price is None or current_customer_price <= 0:
         return (
+            None,
             None,
             "skip",
             f"Есть рыночная цель: цена покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}), но текущая цена и скидка WB недоступны. Загружать цену без этой проверки нельзя.",
@@ -551,8 +609,16 @@ def _recommend_price(
     if current_discount is None:
         return (
             None,
+            None,
             "skip",
             f"Есть рыночная цель: цена покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(target_price)}), но WB не вернул текущую скидку кабинета. Загружать базовую цену без скидки нельзя.",
+        )
+    if current_price is None or current_price <= 0:
+        return (
+            None,
+            None,
+            "skip",
+            "Есть рыночная цель, но WB не вернул текущую базовую цену. Менять скидку без базовой цены нельзя.",
         )
     max_customer_price = current_customer_price * (Decimal("1") + max_raise_percent / Decimal("100"))
     scarcity_target = None
@@ -567,9 +633,9 @@ def _recommend_price(
         target_price = max(target_price, scarcity_target)
     candidate_customer_price = min(target_price, max_customer_price)
     if candidate_customer_price <= current_customer_price * Decimal("1.03"):
-        return current_price, "hold", "Не меняем: цена покупателя на 2% ниже минимального конкурента дает рост меньше 3%."
+        return current_price, current_discount, "hold", "Не меняем: цена покупателя на 2% ниже минимального конкурента дает рост меньше 3%."
     if candidate_customer_price <= current_customer_price:
-        return current_price, "hold", "Не меняем: текущая цена покупателя уже не ниже расчетной рыночной цели."
+        return current_price, current_discount, "hold", "Не меняем: текущая цена покупателя уже не ниже расчетной рыночной цели."
     cap_note = ""
     if candidate_customer_price < target_price:
         cap_note = f" Рост ограничен лимитом {max_raise_percent}% от текущей цены, поэтому ниже рыночной цели."
@@ -579,16 +645,20 @@ def _recommend_price(
         if stock_qty <= 2 and scarcity_target is not None
         else ""
     )
-    candidate_base_price = _base_price_for_customer_price(
+    recommended_discount = _seller_discount_for_site_price(
         candidate_customer_price,
+        current_price,
         current_discount,
-        current_price=current_price,
-        current_customer_price=current_customer_price,
+        current_customer_price,
+        current_seller_discounted,
     )
+    if recommended_discount is None:
+        return current_price, current_discount, "skip", "Не удалось пересчитать целевую цену покупателя в процент скидки WB."
     return (
-        _round_price(candidate_base_price),
+        current_price,
+        recommended_discount,
         "recommend_raise",
-        f"Цель: поставить цену покупателя на 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(_target_from_min(market_min))}).{scarcity_note}{cap_note}{stock_note}",
+        f"Цель: базовую цену WB не менять ({_money_text(current_price)}), а поднять цену на сайте WB через уменьшение скидки с {current_discount}% до {recommended_discount}%. Ориентир: 2% ниже минимального конкурента ({_money_text(market_min)} -> {_money_text(_target_from_min(market_min))}).{scarcity_note}{cap_note}{stock_note}",
     )
 
 
@@ -620,38 +690,48 @@ def _round_price(value: Decimal) -> Decimal:
     return rounded
 
 
-def _base_price_for_customer_price(
+def _seller_discount_for_site_price(
     customer_price: Decimal,
-    discount: int | None,
-    *,
-    current_price: Decimal | None = None,
-    current_customer_price: Decimal | None = None,
-) -> Decimal:
-    if current_price and current_price > 0 and current_customer_price and current_customer_price > 0:
-        factor = current_customer_price / current_price
-        if Decimal("0.03") <= factor <= Decimal("1"):
-            return customer_price / factor
-    if not discount:
-        return customer_price
-    factor = (Decimal("100") - Decimal(discount)) / Decimal("100")
-    if factor <= 0:
-        return customer_price
-    return customer_price / factor
+    current_price: Decimal,
+    current_discount: int | None,
+    current_customer_price: Decimal | None,
+    current_seller_discounted: Decimal | None,
+) -> int | None:
+    if current_price <= 0 or customer_price <= 0:
+        return None
+    seller_price_now = current_seller_discounted or _discounted(current_price, current_discount)
+    wb_factor = Decimal("1")
+    if seller_price_now and seller_price_now > 0 and current_customer_price and current_customer_price > 0:
+        detected = current_customer_price / seller_price_now
+        if Decimal("0.20") <= detected <= Decimal("1.20"):
+            wb_factor = detected
+    target_seller_price = customer_price / wb_factor
+    discount = (Decimal("100") - (target_seller_price / current_price * Decimal("100"))).quantize(
+        Decimal("1"),
+        rounding=ROUND_FLOOR,
+    )
+    return int(max(0, min(99, discount)))
 
 
 def _expected_customer_price(
     recommended_price: Decimal | None,
+    recommended_discount: int | None,
     current_price: Decimal | None,
     current_customer_price: Decimal | None,
+    current_seller_discounted: Decimal | None,
     current_discount: int | None,
 ) -> Decimal | None:
     if recommended_price is None:
         return None
-    if current_price and current_price > 0 and current_customer_price and current_customer_price > 0:
-        factor = current_customer_price / current_price
-        if Decimal("0.03") <= factor <= Decimal("1"):
-            return (recommended_price * factor).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return _discounted(recommended_price, current_discount)
+    seller_price = _discounted(recommended_price, recommended_discount if recommended_discount is not None else current_discount)
+    if seller_price is None:
+        return None
+    seller_price_now = current_seller_discounted or _discounted(current_price, current_discount)
+    if seller_price_now and seller_price_now > 0 and current_customer_price and current_customer_price > 0:
+        wb_factor = current_customer_price / seller_price_now
+        if Decimal("0.20") <= wb_factor <= Decimal("1.20"):
+            return (seller_price * wb_factor).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return seller_price
 
 
 async def _explain_with_ai(
@@ -670,6 +750,7 @@ async def _explain_with_ai(
     orders_30d: int | None,
     revenue_30d: Decimal | None,
     recommended_price: Decimal | None,
+    recommended_discount: int | None,
     recommended_customer_price: Decimal | None,
     decision: str,
     basis: str,
@@ -687,6 +768,7 @@ async def _explain_with_ai(
         orders_30d=orders_30d,
         revenue_30d=revenue_30d,
         recommended_price=recommended_price,
+        recommended_discount=recommended_discount,
         recommended_customer_price=recommended_customer_price,
         decision=decision,
         basis=basis,
@@ -697,7 +779,8 @@ async def _explain_with_ai(
         "Дай короткое деловое объяснение рекомендации по цене для продавца Wildberries. "
         "Не выдумывай данные, используй только цифры ниже. Обязательно объясни формулу: "
         "целевая цена покупателя = минимальная цена релевантного конкурента минус 2%; "
-        "базовая цена WB рассчитывается с учетом текущей скидки. "
+        "текущую базовую цену WB не меняем, цену на сайте регулируем только скидкой продавца. "
+        "Скидку WB считаем как внешний коэффициент по текущей цене на сайте и не управляем ей. "
         "Ответ на русском, 2-3 предложения.\n"
         f"Товар: {name}\n"
         f"Остаток: {stock_qty}\n"
@@ -705,7 +788,7 @@ async def _explain_with_ai(
         f"текущая цена покупателя: {_money_text(current_customer_price)}; источник: {current_price_source or 'нет'}\n"
         f"Конкуренты: минимум {_money_text(market_min)}, средняя {_money_text(market_avg)}, медиана {_money_text(market_median)}, максимум {_money_text(market_max)}\n"
         f"Заказы конкурентов за 30 дней: {orders_30d or 0}; выручка: {_money_text(revenue_30d)}\n"
-        f"Рекомендованная базовая цена WB к загрузке: {_money_text(recommended_price)}; ожидаемая цена покупателя после скидки: {_money_text(recommended_customer_price)}\n"
+        f"Базовая цена WB остается: {_money_text(recommended_price)}; новая скидка продавца: {recommended_discount if recommended_discount is not None else 'нет данных'}%; ожидаемая цена на сайте: {_money_text(recommended_customer_price)}\n"
         f"Базовая логика: {basis}"
     )
     ai_text = await _openai_text(settings, prompt) or await _gemini_text(settings, prompt)
@@ -726,6 +809,7 @@ def _deterministic_reason(
     orders_30d: int | None,
     revenue_30d: Decimal | None,
     recommended_price: Decimal | None,
+    recommended_discount: int | None,
     recommended_customer_price: Decimal | None,
     decision: str,
     basis: str,
@@ -736,8 +820,8 @@ def _deterministic_reason(
         f"{basis} По релевантным конкурентам: минимум {_money_text(market_min)}, средняя "
         f"{_money_text(market_avg)}, медиана {_money_text(market_median)}, максимум {_money_text(market_max)}; "
         f"за 30 дней {orders_30d or 0} заказов на {_money_text(revenue_30d)}. "
-        f"К загрузке в WB: базовая цена {_money_text(recommended_price)} при скидке "
-        f"{current_discount if current_discount is not None else 'нет данных'}%, ожидаемая цена покупателя "
+        f"К загрузке в WB: базовая цена остается {_money_text(recommended_price)}, новая скидка продавца "
+        f"{recommended_discount if recommended_discount is not None else 'нет данных'}%, ожидаемая цена на сайте "
         f"{_money_text(recommended_customer_price)}. Остаток {stock_qty} шт.; текущая базовая цена "
         f"{_money_text(current_price)}, текущая цена покупателя {_money_text(current_customer_price)} "
         f"({current_price_source or 'источник недоступен'})."

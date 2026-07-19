@@ -155,6 +155,7 @@ type CrisisPriceRecommendation = {
   orders_30d?: number | null;
   revenue_30d?: string | null;
   recommended_price?: string | null;
+  recommended_discount?: number | null;
   raise_percent?: string | null;
   expected_discounted_price?: string | null;
   decision: "recommend_raise" | "hold" | "skip";
@@ -554,11 +555,11 @@ function App() {
 
   function approvedPriceItems() {
     return (pricingResult?.items ?? [])
-      .filter((item) => approvedPrices[item.nm_id] && approvedBasePrice(item))
+      .filter((item) => approvedPrices[item.nm_id] && approvedBasePrice(item) && approvedSellerDiscount(item) !== null)
       .map((item) => ({
         nm_id: item.nm_id,
         price: approvedBasePrice(item)!,
-        discount: item.current_discount ?? 0,
+        discount: approvedSellerDiscount(item)!,
       }));
   }
 
@@ -575,7 +576,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dry_run: true, items }),
       });
-      setMessage(`Проверка без изменения WB готова: подготовлено ${items.length} цен. В WB ничего не изменено.`);
+      setMessage(`Проверка без изменения WB готова: подготовлено ${items.length} скидок продавца. Базовые цены WB не меняются.`);
       console.info(result);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка проверки цен");
@@ -591,7 +592,7 @@ function App() {
       return;
     }
     const confirmed = window.confirm(
-      `Отправить в WB ${items.length} цен? Это реальное изменение цен в кабинете Wildberries.`,
+      `Отправить в WB ${items.length} скидок продавца? Базовые цены карточек останутся прежними, но цена на сайте WB изменится.`,
     );
     if (!confirmed) {
       setMessage("Отправка цен отменена. В WB ничего не изменено.");
@@ -604,7 +605,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dry_run: false, items }),
       });
-      setMessage(`Цены отправлены в WB: ${result.uploaded ?? items.length} позиций. Проверь статус задачи в кабинете WB.`);
+      setMessage(`Скидки отправлены в WB: ${result.uploaded ?? items.length} позиций. Базовые цены не менялись. Проверь цену на сайте WB через 30-60 минут.`);
       console.info(result);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка отправки цен в WB");
@@ -613,7 +614,7 @@ function App() {
     }
   }
 
-  function manualBasePrice(item: CrisisPriceRecommendation) {
+  function manualSitePrice(item: CrisisPriceRecommendation) {
     const raw = manualPrices[item.nm_id]?.trim();
     if (!raw) {
       return null;
@@ -623,11 +624,23 @@ function App() {
   }
 
   function approvedBasePrice(item: CrisisPriceRecommendation) {
-    return manualBasePrice(item) ?? (item.recommended_price ? Number(item.recommended_price) : null);
+    return parseDecimal(item.current_price) ?? parseDecimal(item.recommended_price);
+  }
+
+  function approvedSellerDiscount(item: CrisisPriceRecommendation) {
+    const manual = manualSitePrice(item);
+    if (manual) {
+      return sellerDiscountForSitePrice(item, manual);
+    }
+    return item.recommended_discount ?? item.current_discount ?? null;
+  }
+
+  function approvedSitePrice(item: CrisisPriceRecommendation) {
+    return manualSitePrice(item) ?? parseDecimal(item.expected_discounted_price);
   }
 
   function canApprovePrice(item: CrisisPriceRecommendation) {
-    return Boolean(approvedBasePrice(item));
+    return Boolean(approvedBasePrice(item) && approvedSellerDiscount(item) !== null);
   }
 
   async function loadProductAnalysis(product: SupplierProduct) {
@@ -1031,8 +1044,8 @@ function App() {
           <div className="pricing-toolbar">
             <button onClick={() => analyzeCrisisPricing(0)} disabled={loading}>Проанализировать цены</button>
             <button onClick={() => analyzeCrisisPricing(pricingOffset + PRICING_BATCH_SIZE)} disabled={loading}>Следующая пачка</button>
-            <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить без изменения WB</button>
-            <button className="danger-action" onClick={uploadApprovedPrices} disabled={loading}>Отправить цены в WB</button>
+            <button onClick={dryRunApprovedPrices} disabled={loading}>Проверить скидки без изменения WB</button>
+            <button className="danger-action" onClick={uploadApprovedPrices} disabled={loading}>Отправить скидки в WB</button>
           </div>
           {!integrations?.wb_api ? (
             <div className="hint">Для анализа цен нужен WB_API_TOKEN на backend: цены, остатки и аналитика.</div>
@@ -1068,18 +1081,19 @@ function App() {
                       <dt>Минимум - 2%</dt><dd>{formatMoney(item.competitor_price_target)} <small>расчетная цель: на 2% ниже минимального конкурента</small></dd>
                       <dt>Заказы 30 дней</dt><dd>{formatNumber(item.orders_30d)}</dd>
                       <dt>Заказы, ₽ 30 дней</dt><dd>{formatMoney(item.revenue_30d)}</dd>
-                      <dt>Новая базовая цена WB</dt><dd>{formatMoney(item.recommended_price)}</dd>
-                      <dt>Ожидаемая цена покупателя</dt><dd>{formatMoney(item.expected_discounted_price)}</dd>
+                      <dt>Базовая цена WB</dt><dd>{formatMoney(approvedBasePrice(item))} <small>не меняем, чтобы карточка не проседала в поиске</small></dd>
+                      <dt>Новая скидка продавца</dt><dd>{formatNumber(approvedSellerDiscount(item))}%</dd>
+                      <dt>Ожидаемая цена покупателя</dt><dd>{formatMoney(approvedSitePrice(item))}</dd>
                       <dt>Рост</dt><dd>{formatPercentString(item.raise_percent)}</dd>
                       <dt>Логика</dt><dd>{item.recommendation_basis ?? item.reason}</dd>
                       <dt>Обоснование</dt><dd>{item.reason}</dd>
                     </dl>
                     <div className="manual-price">
                       <label>
-                        <span>Ручная базовая цена WB</span>
+                        <span>Ручная цена на сайте WB</span>
                         <input
                           inputMode="numeric"
-                          placeholder={item.current_price ? `выше ${formatMoney(item.current_price)}` : "например 1990"}
+                          placeholder={item.current_discounted_price ? `выше ${formatMoney(item.current_discounted_price)}` : "например 490"}
                           value={manualPrices[item.nm_id] ?? ""}
                           onChange={(event) => {
                             const value = event.target.value.replace(/[^\d]/g, "");
@@ -1091,7 +1105,7 @@ function App() {
                         />
                       </label>
                       <small>
-                        Для ручного повышения впиши базовую цену из кабинета WB. После этого можно поставить галочку, проверить пакет без изменения WB или сразу отправить цены в WB.
+                        Впиши желаемую цену покупателя на сайте WB. Базовая цена не меняется, система пересчитает только скидку продавца.
                       </small>
                     </div>
                     {(item.competitors ?? []).length ? (
@@ -1353,6 +1367,33 @@ function formatPercentString(value?: string | number | null) {
   }
   const number = Number(value);
   return Number.isFinite(number) ? `${number.toFixed(1)}%` : "нет данных";
+}
+
+function parseDecimal(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(String(value).replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sellerDiscountForSitePrice(item: CrisisPriceRecommendation, targetSitePrice: number) {
+  const basePrice = parseDecimal(item.current_price) ?? parseDecimal(item.recommended_price);
+  if (!basePrice || basePrice <= 0 || targetSitePrice <= 0) {
+    return null;
+  }
+  const currentSitePrice = parseDecimal(item.current_discounted_price);
+  const currentSellerPrice = parseDecimal(item.current_seller_discounted_price);
+  let wbFactor = 1;
+  if (currentSitePrice && currentSellerPrice && currentSellerPrice > 0) {
+    const detected = currentSitePrice / currentSellerPrice;
+    if (detected >= 0.2 && detected <= 1.2) {
+      wbFactor = detected;
+    }
+  }
+  const targetSellerPrice = targetSitePrice / wbFactor;
+  const discount = Math.floor(100 - (targetSellerPrice / basePrice) * 100);
+  return Math.max(0, Math.min(99, discount));
 }
 
 function formatPricingDecision(decision: CrisisPriceRecommendation["decision"]) {

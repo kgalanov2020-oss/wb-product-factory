@@ -42,6 +42,8 @@ from backend.product_content.service import ProductContentService
 from backend.pricing.models import (
     CrisisPricingRequest,
     CrisisPricingResult,
+    PriceMonitorRequest,
+    PriceMonitorResult,
     PriceUploadRequest,
     PriceUploadResult,
 )
@@ -701,6 +703,23 @@ async def upload_crisis_prices(
 ) -> PriceUploadResult:
     try:
         return await get_crisis_pricing_service(request).upload_prices(payload)
+    except WBApiConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/pricing/crisis/monitor",
+    response_model=PriceMonitorResult,
+    tags=["pricing"],
+)
+async def monitor_crisis_prices(
+    payload: PriceMonitorRequest,
+    request: Request,
+) -> PriceMonitorResult:
+    try:
+        return await get_crisis_pricing_service(request).monitor_prices(payload)
     except WBApiConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except Exception as exc:
