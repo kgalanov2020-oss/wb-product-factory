@@ -7,6 +7,31 @@ from pydantic import HttpUrl, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _patch_supabase_secret_key_headers() -> None:
+    try:
+        from supabase._sync.client import Client
+    except Exception:
+        return
+
+    if getattr(Client, "_wb_factory_secret_key_patch", False):
+        return
+
+    original_get_auth_headers = Client._get_auth_headers
+
+    def get_auth_headers(self, authorization: str | None = None) -> dict[str, str]:
+        headers = original_get_auth_headers(self, authorization)
+        if str(self.supabase_key).startswith("sb_secret_"):
+            headers.pop("Authorization", None)
+            headers["apikey"] = self.supabase_key
+        return headers
+
+    Client._get_auth_headers = get_auth_headers
+    Client._wb_factory_secret_key_patch = True
+
+
+_patch_supabase_secret_key_headers()
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -53,13 +78,13 @@ class Settings(BaseSettings):
     wb_prices_base_url: HttpUrl = HttpUrl("https://discounts-prices-api.wildberries.ru")
     wb_statistics_base_url: HttpUrl = HttpUrl("https://statistics-api.wildberries.ru")
 
-    def model_post_init(self, __context: object) -> None:
-        if self.supabase_secret_key:
-            self.supabase_service_role_key = self.supabase_secret_key
-
     @property
     def supabase_configured(self) -> bool:
-        return bool(self.supabase_url and self.supabase_service_role_key)
+        return bool(self.supabase_url and self.supabase_api_secret)
+
+    @property
+    def supabase_api_secret(self) -> SecretStr | None:
+        return self.supabase_secret_key or self.supabase_service_role_key
 
     @property
     def mpstats_login_configured(self) -> bool:
