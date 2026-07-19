@@ -161,6 +161,14 @@ type CrisisPriceRecommendation = {
   reason: string;
   recommendation_basis?: string | null;
   current_price_source?: string | null;
+  raw?: {
+    stock_row?: {
+      raw?: {
+        source?: string | null;
+        stock_snapshot_date?: string | null;
+      };
+    };
+  };
   competitors: Array<{
     nm_id?: number | null;
     name?: string | null;
@@ -967,6 +975,7 @@ function App() {
                     <dl>
                       <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
+                      <dt>Источник остатков</dt><dd>{formatStockSource(item)}</dd>
                       <dt>Текущая базовая цена WB</dt><dd>{formatMoney(item.current_price)} <small>{item.current_price_source ?? "источник недоступен"}</small></dd>
                       <dt>Текущая цена покупателя</dt><dd>{formatMoney(item.current_discounted_price)}</dd>
                       <dt>Рынок</dt><dd>{formatMarketRange(item)}</dd>
@@ -1233,6 +1242,21 @@ function formatPricingDecision(decision: CrisisPriceRecommendation["decision"]) 
     skip: "не менять",
   };
   return names[decision];
+}
+
+function formatStockSource(item: CrisisPriceRecommendation) {
+  const raw = item.raw?.stock_row?.raw;
+  const source = raw?.source;
+  const date = raw?.stock_snapshot_date;
+  const labels: Record<string, string> = {
+    google_sheet_latest_snapshot: "Google Sheet: последний общий снимок",
+    google_sheet_latest_per_sku: "Google Sheet: последний известный остаток по артикулу",
+    google_sheet_wb_stocks: "Google Sheet: остатки WB",
+  };
+  if (!source) {
+    return "WB API или база";
+  }
+  return `${labels[source] ?? source}${date ? ` от ${date}` : ""}`;
 }
 
 function recommendationReason(product: SupplierProduct) {
