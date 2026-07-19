@@ -19,7 +19,11 @@ const LOCAL_API_URL = "http://127.0.0.1:8000";
 const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
 const ZVEZDA_PRICE_URL =
   "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing";
-const DEFAULT_API_URL = import.meta.env.VITE_API_URL ?? RENDER_API_URL;
+const ENV_API_URL = import.meta.env.VITE_API_URL;
+const DEFAULT_API_URL =
+  ENV_API_URL && !ENV_API_URL.includes("localhost") && !ENV_API_URL.includes("127.0.0.1")
+    ? ENV_API_URL
+    : RENDER_API_URL;
 const CURRENT_ANALYSIS_VERSION = "zvezda_relevance_v2";
 
 type Integrations = {
