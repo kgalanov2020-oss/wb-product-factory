@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
@@ -128,9 +129,16 @@ class CrisisPricingService:
         current_discounted = seller_discounted
         current_price_source = "WB price API" if current_price is not None else None
         public_price, public_payload = await _safe_public_price(nm_id)
+        if public_price is None:
+            public_price, public_payload = await _safe_mpstats_card_price(self._settings, nm_id)
         if public_price is not None:
             current_discounted = public_price
-            current_price_source = "WB price API + витрина WB" if current_price is not None else "витрина WB"
+            public_source = public_payload.get("source") if isinstance(public_payload, dict) else None
+            current_price_source = (
+                f"WB price API + {public_source or 'витрина WB'}"
+                if current_price is not None
+                else str(public_source or "витрина WB")
+            )
             current_price_row = {**current_price_row, "wb_public_card": public_payload}
             if current_price is None:
                 current_price = public_price
@@ -465,6 +473,36 @@ async def _safe_public_price(nm_id: int) -> tuple[Decimal | None, dict[str, Any]
         return await get_wb_public_card_price(nm_id)
     except Exception as exc:
         return None, {"error": str(exc)}
+
+
+async def _safe_mpstats_card_price(settings: Settings, nm_id: int) -> tuple[Decimal | None, dict[str, Any]]:
+    token = settings.mpstats_api_secret
+    if token is None:
+        return None, {"source": "MPStats карточка", "error": "MPStats API token is not configured"}
+    end = datetime.now(timezone.utc).date() - timedelta(days=1)
+    start = end - timedelta(days=31)
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-Mpstats-TOKEN": token.get_secret_value(),
+    }
+    url = f"https://mpstats.io/api/analytics/v1/wb/items/{nm_id}/full"
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            response = await client.get(url, headers=headers, params={"d1": start.isoformat(), "d2": end.isoformat()})
+        if response.status_code >= 400:
+            return None, {"source": "MPStats карточка", "status": response.status_code, "error": response.text[:500]}
+        payload = response.json()
+    except Exception as exc:
+        return None, {"source": "MPStats карточка", "error": str(exc)}
+    price_block = payload.get("price") if isinstance(payload, dict) and isinstance(payload.get("price"), dict) else {}
+    price = _to_decimal(price_block.get("final_price") or price_block.get("wallet_price") or price_block.get("price"))
+    return price, {
+        "source": "MPStats карточка",
+        "id": payload.get("id") if isinstance(payload, dict) else nm_id,
+        "name": payload.get("name") if isinstance(payload, dict) else None,
+        "price": price_block,
+    }
 
 
 def _current_prices(row: dict[str, Any]) -> tuple[Decimal | None, int | None, Decimal | None]:
