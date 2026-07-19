@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import Literal
 
 from pathlib import Path
+import os
 
 from pydantic import HttpUrl, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,12 @@ def _patch_supabase_secret_key_headers() -> None:
 
     def get_auth_headers(self, authorization: str | None = None) -> dict[str, str]:
         headers = original_get_auth_headers(self, authorization)
+        anon_key = os.getenv("SUPABASE_ANON_KEY")
+        if str(self.supabase_key).startswith("eyJ") and anon_key:
+            headers["apiKey"] = anon_key
+            headers["apikey"] = anon_key
+            headers["Authorization"] = f"Bearer {self.supabase_key}"
+            return headers
         if str(self.supabase_key).startswith("sb_secret_"):
             headers.pop("Authorization", None)
             headers["apikey"] = self.supabase_key
