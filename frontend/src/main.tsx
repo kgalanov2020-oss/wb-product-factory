@@ -18,11 +18,6 @@ const RENDER_API_URL = "https://wb-product-factory-api.onrender.com";
 const API_URL_STORAGE_KEY = "wb-product-factory-api-url";
 const ZVEZDA_PRICE_URL =
   "https://docs.google.com/spreadsheets/d/1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I/edit?usp=sharing";
-const ENV_API_URL = import.meta.env.VITE_API_URL;
-const DEFAULT_API_URL =
-  ENV_API_URL && !ENV_API_URL.includes("localhost") && !ENV_API_URL.includes("127.0.0.1")
-    ? ENV_API_URL
-    : RENDER_API_URL;
 const CURRENT_ANALYSIS_VERSION = "zvezda_relevance_v2";
 
 type Integrations = {
@@ -254,13 +249,7 @@ const PRICING_BATCH_SIZE = 3;
 
 function App() {
   const [page, setPage] = useState<Page>(() => pageFromHash(window.location.hash));
-  const [apiUrl, setApiUrl] = useState(() => {
-    const savedApiUrl = localStorage.getItem(API_URL_STORAGE_KEY);
-    if (!savedApiUrl || savedApiUrl.includes("localhost") || savedApiUrl.includes("127.0.0.1")) {
-      return DEFAULT_API_URL;
-    }
-    return savedApiUrl;
-  });
+  const [apiUrl] = useState(RENDER_API_URL);
   const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [recommendations, setRecommendations] = useState<SupplierProduct[]>([]);
@@ -1140,8 +1129,8 @@ function App() {
             <span>Render API</span>
           </div>
           <div className="api-switcher">
-            <input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} />
-            <button type="button" onClick={() => setApiUrl(RENDER_API_URL)}>Render</button>
+            <input value={apiUrl} readOnly />
+            <button type="button" disabled>Render</button>
           </div>
           {!integrations?.mpstats_api ? (
             <div className="hint">
