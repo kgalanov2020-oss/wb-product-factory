@@ -114,7 +114,12 @@ class CrisisPricingService:
             return PriceUploadResult(dry_run=True, uploaded=0, payload=payload)
         wb_client = self._wb_client or WBApiClient(self._settings)
         result = await wb_client.upload_prices(payload["data"])
-        return PriceUploadResult(dry_run=False, uploaded=len(request.items), payload=result)
+        monitor_result = await _trigger_price_monitor(self._settings, request)
+        return PriceUploadResult(
+            dry_run=False,
+            uploaded=len(request.items),
+            payload={**result, "price_monitor": monitor_result},
+        )
 
     async def monitor_prices(self, request: PriceMonitorRequest) -> PriceMonitorResult:
         wb_client = self._wb_client or WBApiClient(self._settings)
@@ -452,6 +457,32 @@ async def _download_google_sheet_csv(spreadsheet_id: str, gid: str) -> str:
         response = await client.get(url)
     response.raise_for_status()
     return response.text
+
+
+async def _trigger_price_monitor(settings: Settings, request: PriceUploadRequest) -> dict[str, Any]:
+    webhook_url = settings.n8n_price_monitor_webhook_url
+    if webhook_url is None:
+        return {"started": False, "reason": "N8N_PRICE_MONITOR_WEBHOOK_URL is not configured"}
+    expected_site_prices = {
+        str(item.nm_id): str(item.expected_site_price)
+        for item in request.items
+        if item.expected_site_price is not None
+    }
+    body = {
+        "nm_ids": [item.nm_id for item in request.items],
+        "expected_site_prices": expected_site_prices,
+        "tolerance_percent": 3,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            response = await client.post(str(webhook_url), json=body)
+        return {
+            "started": response.status_code < 400,
+            "status_code": response.status_code,
+            "response": response.text[:500],
+        }
+    except Exception as exc:
+        return {"started": False, "error": str(exc)}
 
 
 def _csv_rows(content: str) -> list[dict[str, str]]:

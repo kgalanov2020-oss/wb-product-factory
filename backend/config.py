@@ -86,6 +86,7 @@ class Settings(BaseSettings):
     wb_api_token: SecretStr | None = None
     wb_prices_base_url: HttpUrl = HttpUrl("https://discounts-prices-api.wildberries.ru")
     wb_statistics_base_url: HttpUrl = HttpUrl("https://statistics-api.wildberries.ru")
+    n8n_price_monitor_webhook_url: HttpUrl | None = None
     zvezda_google_sheet_id: str = "1foAGehT70Vlquawlwrz4K2AITELWuIV5tumFBOT6q5I"
     zvezda_stock_sheet_gid: str = "0"
     zvezda_catalog_sheet_gid: str = "1945772316"

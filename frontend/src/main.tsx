@@ -276,7 +276,7 @@ function App() {
   const [pricingResult, setPricingResult] = useState<CrisisPricingResult | null>(null);
   const [pricingOffset, setPricingOffset] = useState(0);
   const [approvedPrices, setApprovedPrices] = useState<Record<number, boolean>>({});
-  const [manualPrices, setManualPrices] = useState<Record<number, string>>({});
+  const [manualDiscounts, setManualDiscounts] = useState<Record<number, string>>({});
   const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
@@ -544,7 +544,7 @@ function App() {
       setPricingResult(result);
       setPricingOffset(nextOffset);
       setApprovedPrices({});
-      setManualPrices({});
+      setManualDiscounts({});
       setMessage(`Пачка ${nextOffset + 1}-${nextOffset + result.analyzed}: проверено ${result.analyzed}. Рекомендовано поднять цену: ${result.recommended}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка анализа цен");
@@ -560,13 +560,14 @@ function App() {
         nm_id: item.nm_id,
         price: approvedBasePrice(item)!,
         discount: approvedSellerDiscount(item)!,
+        expected_site_price: approvedSitePrice(item),
       }));
   }
 
   async function dryRunApprovedPrices() {
     const items = approvedPriceItems();
     if (!items.length) {
-      setMessage("Отметьте товары с рекомендацией или введите ручную базовую цену WB и поставьте галочку.");
+      setMessage("Отметьте товары с рекомендацией или введите ручную скидку продавца и поставьте галочку.");
       return;
     }
     setLoading(true);
@@ -614,13 +615,13 @@ function App() {
     }
   }
 
-  function manualSitePrice(item: CrisisPriceRecommendation) {
-    const raw = manualPrices[item.nm_id]?.trim();
+  function manualSellerDiscount(item: CrisisPriceRecommendation) {
+    const raw = manualDiscounts[item.nm_id]?.trim();
     if (!raw) {
       return null;
     }
     const value = Number(raw.replace(/[^\d]/g, ""));
-    return Number.isFinite(value) && value > 0 ? value : null;
+    return Number.isFinite(value) && value >= 0 && value <= 99 ? value : null;
   }
 
   function approvedBasePrice(item: CrisisPriceRecommendation) {
@@ -628,15 +629,19 @@ function App() {
   }
 
   function approvedSellerDiscount(item: CrisisPriceRecommendation) {
-    const manual = manualSitePrice(item);
-    if (manual) {
-      return sellerDiscountForSitePrice(item, manual);
+    const manual = manualSellerDiscount(item);
+    if (manual !== null) {
+      return manual;
     }
     return item.recommended_discount ?? item.current_discount ?? null;
   }
 
   function approvedSitePrice(item: CrisisPriceRecommendation) {
-    return manualSitePrice(item) ?? parseDecimal(item.expected_discounted_price);
+    const manual = manualSellerDiscount(item);
+    if (manual !== null) {
+      return expectedSitePriceForSellerDiscount(item, manual);
+    }
+    return parseDecimal(item.expected_discounted_price);
   }
 
   function canApprovePrice(item: CrisisPriceRecommendation) {
@@ -1069,7 +1074,7 @@ function App() {
                       />
                       <strong>{item.name}</strong>
                     </label>
-                    <span>{formatPricingDecision(item.decision)}{canApprovePrice(item) ? "" : " · галочка доступна только при рекомендации или ручной цене"}</span>
+                    <span>{formatPricingDecision(item.decision)}{canApprovePrice(item) ? "" : " · галочка доступна только при рекомендации или ручной скидке"}</span>
                     <dl>
                       <dt>Артикул WB</dt><dd>{item.nm_id}</dd>
                       <dt>Остаток</dt><dd>{item.stock_qty}</dd>
@@ -1090,14 +1095,14 @@ function App() {
                     </dl>
                     <div className="manual-price">
                       <label>
-                        <span>Ручная цена на сайте WB</span>
+                        <span>Ручная скидка продавца, %</span>
                         <input
                           inputMode="numeric"
-                          placeholder={item.current_discounted_price ? `выше ${formatMoney(item.current_discounted_price)}` : "например 490"}
-                          value={manualPrices[item.nm_id] ?? ""}
+                          placeholder={item.current_discount !== null && item.current_discount !== undefined ? `меньше ${item.current_discount}%` : "например 74"}
+                          value={manualDiscounts[item.nm_id] ?? ""}
                           onChange={(event) => {
-                            const value = event.target.value.replace(/[^\d]/g, "");
-                            setManualPrices((current) => ({ ...current, [item.nm_id]: value }));
+                            const value = event.target.value.replace(/[^\d]/g, "").slice(0, 2);
+                            setManualDiscounts((current) => ({ ...current, [item.nm_id]: value }));
                             if (!value) {
                               setApprovedPrices((current) => ({ ...current, [item.nm_id]: false }));
                             }
@@ -1105,7 +1110,7 @@ function App() {
                         />
                       </label>
                       <small>
-                        Впиши желаемую цену покупателя на сайте WB. Базовая цена не меняется, система пересчитает только скидку продавца.
+                        Впиши новую скидку продавца. Базовая цена WB не меняется; ожидаемая цена покупателя пересчитывается с учетом текущей скидки WB.
                       </small>
                     </div>
                     {(item.competitors ?? []).length ? (
@@ -1377,9 +1382,9 @@ function parseDecimal(value?: string | number | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function sellerDiscountForSitePrice(item: CrisisPriceRecommendation, targetSitePrice: number) {
+function expectedSitePriceForSellerDiscount(item: CrisisPriceRecommendation, sellerDiscount: number) {
   const basePrice = parseDecimal(item.current_price) ?? parseDecimal(item.recommended_price);
-  if (!basePrice || basePrice <= 0 || targetSitePrice <= 0) {
+  if (!basePrice || basePrice <= 0 || sellerDiscount < 0 || sellerDiscount > 99) {
     return null;
   }
   const currentSitePrice = parseDecimal(item.current_discounted_price);
@@ -1391,9 +1396,8 @@ function sellerDiscountForSitePrice(item: CrisisPriceRecommendation, targetSiteP
       wbFactor = detected;
     }
   }
-  const targetSellerPrice = targetSitePrice / wbFactor;
-  const discount = Math.floor(100 - (targetSellerPrice / basePrice) * 100);
-  return Math.max(0, Math.min(99, discount));
+  const sellerPrice = basePrice * (100 - sellerDiscount) / 100;
+  return Math.round(sellerPrice * wbFactor);
 }
 
 function formatPricingDecision(decision: CrisisPriceRecommendation["decision"]) {

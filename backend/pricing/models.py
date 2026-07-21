@@ -72,6 +72,7 @@ class PriceApprovalItem(BaseModel):
     nm_id: int
     price: int = Field(gt=0)
     discount: int | None = Field(default=None, ge=0, le=99)
+    expected_site_price: Decimal | None = Field(default=None, gt=0)
 
 
 class PriceUploadRequest(BaseModel):
